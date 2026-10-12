@@ -877,6 +877,9 @@ mod host {
     }
 
     /// `os_get_free_disk_space`. `0` on failure.
+    // f_frsize and f_bavail are u64 on 64-bit Linux and a narrower
+    // unsigned type on 32-bit Linux and the BSDs, so the casts stay.
+    #[allow(clippy::unnecessary_cast)]
     pub fn free_disk_space(path: &[u8]) -> u64 {
         let Some(path) = c_path(path) else {
             return 0;
@@ -1018,7 +1021,10 @@ mod host {
         })
     }
 
+    // freeram and bufferram are u64 on 64-bit Linux and c_ulong on
+    // 32-bit. u64::from covers both. mem_unit is c_uint either way.
     #[cfg(target_os = "linux")]
+    #[allow(clippy::useless_conversion)]
     pub fn sys_free() -> u64 {
         let mut info = MaybeUninit::<libc::sysinfo>::uninit();
         // SAFETY: `info` is a sysinfo buffer.
@@ -1054,7 +1060,9 @@ mod host {
         0
     }
 
+    // totalram is u64 on 64-bit Linux and c_ulong on 32-bit.
     #[cfg(target_os = "linux")]
+    #[allow(clippy::useless_conversion)]
     pub fn sys_total() -> u64 {
         static TOTAL: Mutex<Option<u64>> = Mutex::new(None);
         let mut guard = TOTAL.lock().unwrap_or_else(|e| e.into_inner());

@@ -62,6 +62,9 @@
 #define os_get_sys_total_size oracle_os_get_sys_total_size
 #define os_get_free_disk_space oracle_os_get_free_disk_space
 #define os_openbsd_get_executable_path oracle_os_openbsd_get_executable_path
+/* dstr_catf stays in the dstr oracle under the renamed symbol. The other
+ * dstr calls resolve to the Rust shims. */
+#define dstr_catf oracle_dstr_catf
 
 /* sleepto calls os_gettime_ns. On macOS that function lives in
  * platform-cocoa.m, so this file has to provide the renamed symbol.

@@ -423,12 +423,51 @@ pub fn profiler_free() {
     globals.roots.clear();
 }
 
-/// Clears roots and this thread's call stack.
+struct TestClock {
+    times: Vec<u64>,
+    pos: usize,
+}
+
+/// Timestamps the C profiler shims read when a test arms them.
+/// `None` means the real `os_gettime_ns`.
+static TEST_CLOCK: Mutex<Option<TestClock>> = Mutex::new(None);
+
+/// Arms the clock the profiler shims read.
+///
+/// `None` restores `os_gettime_ns`. A slice is copied and read from the
+/// start. Past the end the shim returns 0, matching the oracle clock.
+/// This is not a C export. Cargo integration tests link this crate as a
+/// library, so the hook cannot live behind `#[cfg(test)]`.
+pub fn testing_set_clock(times: Option<&[u64]>) {
+    *TEST_CLOCK.lock().unwrap() = times.map(|times| TestClock {
+        times: times.to_vec(),
+        pos: 0,
+    });
+}
+
+/// Next scripted timestamp, or `None` when the test clock is unset.
+///
+/// An exhausted clock returns `Some(0)` so the shim does not fall through
+/// to the real clock.
+pub(crate) fn testing_clock_tick() -> Option<u64> {
+    let mut guard = TEST_CLOCK.lock().unwrap();
+    let clock = guard.as_mut()?;
+    if clock.pos < clock.times.len() {
+        let now = clock.times[clock.pos];
+        clock.pos += 1;
+        Some(now)
+    } else {
+        Some(0)
+    }
+}
+
+/// Clears roots, this thread's call stack, and the test clock.
 ///
 /// The parity harness calls this between cases. It is not a C export:
 /// `profiler_free` leaves a thread-local frame alone, and the C mutex cannot
 /// be reused after that call.
 pub fn testing_reset() {
+    testing_set_clock(None);
     profiler_free();
     ACTIVE.with(|slot| *slot.borrow_mut() = None);
     STACK.with(|slot| slot.borrow_mut().clear());
