@@ -12,6 +12,7 @@
 
 use core::cell::{Cell, RefCell};
 use core::ffi::{CStr, c_char};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 /// A profile name. Equality is the pointer address, not the bytes.
@@ -432,6 +433,10 @@ struct TestClock {
 /// `None` means the real `os_gettime_ns`.
 static TEST_CLOCK: Mutex<Option<TestClock>> = Mutex::new(None);
 
+/// `true` only while [`TEST_CLOCK`] is `Some`. Production loads this
+/// relaxed and does not take the mutex.
+static TEST_CLOCK_ARMED: AtomicBool = AtomicBool::new(false);
+
 /// Arms the clock the profiler shims read.
 ///
 /// `None` restores `os_gettime_ns`. A slice is copied and read from the
@@ -439,17 +444,27 @@ static TEST_CLOCK: Mutex<Option<TestClock>> = Mutex::new(None);
 /// This is not a C export. Cargo integration tests link this crate as a
 /// library, so the hook cannot live behind `#[cfg(test)]`.
 pub fn testing_set_clock(times: Option<&[u64]>) {
-    *TEST_CLOCK.lock().unwrap() = times.map(|times| TestClock {
+    let mut guard = TEST_CLOCK.lock().unwrap();
+    let armed = times.is_some();
+    *guard = times.map(|times| TestClock {
         times: times.to_vec(),
         pos: 0,
     });
+    // The clock is in place before the flag. A relaxed load that then
+    // takes this mutex sees the write.
+    TEST_CLOCK_ARMED.store(armed, Ordering::Release);
 }
 
 /// Next scripted timestamp, or `None` when the test clock is unset.
 ///
 /// An exhausted clock returns `Some(0)` so the shim does not fall through
-/// to the real clock.
+/// to the real clock. The relaxed load is the idle path: `profile_start`
+/// and `profile_end` call this on every sample, and the mutex is taken
+/// only while a test has armed the clock.
 pub(crate) fn testing_clock_tick() -> Option<u64> {
+    if !TEST_CLOCK_ARMED.load(Ordering::Relaxed) {
+        return None;
+    }
     let mut guard = TEST_CLOCK.lock().unwrap();
     let clock = guard.as_mut()?;
     if clock.pos < clock.times.len() {
