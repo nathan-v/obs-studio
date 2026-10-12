@@ -6,7 +6,8 @@
 //! Also provides test-only stand-ins for libobs base/platform symbols
 //! (`os_breakpoint` and `os_oom` are weak on Unix in `oracle/test_stubs.c`,
 //! so the Rust shims win; `os_fread_utf8` is in that file too;
-//! `os_fopen` and friends from `oracle/file_serializer_host.c`; the platform.c
+//! `os_fopen` and friends from `oracle/file_serializer_host.c` (unix
+//! `os_safe_replace` is `oracle_host_os_safe_replace` there); the platform.c
 //! string conversions from `oracle/platform_conv_host.c`; `blog`/`bcrash`
 //! from `util/base-variadic.c`), so any test binary using the oracle resolves
 //! them.

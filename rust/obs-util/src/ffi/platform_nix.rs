@@ -104,19 +104,6 @@ mod shims {
     }
 
     /// # Safety
-    /// `is_obs_plugin` is a `bool` out-pointer or null. Null returns.
-    /// C would write through it.
-    #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn get_plugin_info(path: *const c_char, is_obs_plugin: *mut bool) {
-        if is_obs_plugin.is_null() {
-            return;
-        }
-        let path = cstr(path).unwrap_or(b"");
-        // SAFETY: `is_obs_plugin` is non-null.
-        unsafe { *is_obs_plugin = nix::is_obs_plugin(path) };
-    }
-
-    /// # Safety
     /// `path` is unused. Null is accepted.
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn os_is_obs_plugin(path: *const c_char) -> bool {
@@ -699,3 +686,19 @@ mod shims {
 
 #[cfg(unix)]
 pub use shims::*;
+
+// Not a libobs export. obs-module.c calls it inside the library.
+// Kept outside `mod shims`: a symbol in that module has to be listed in
+// rust-exports.d, and this one is hidden instead (rust-hidden.txt).
+/// # Safety
+/// `is_obs_plugin` is a `bool` out-pointer or null. Null returns.
+/// C would write through it.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn get_plugin_info(path: *const c_char, is_obs_plugin: *mut bool) {
+    if is_obs_plugin.is_null() {
+        return;
+    }
+    let path = cstr(path).unwrap_or(b"");
+    // SAFETY: `is_obs_plugin` is non-null.
+    unsafe { *is_obs_plugin = nix::is_obs_plugin(path) };
+}

@@ -1,4 +1,3 @@
-get_plugin_info unix
 os_breakpoint unix
 os_chdir unix
 os_closedir unix
