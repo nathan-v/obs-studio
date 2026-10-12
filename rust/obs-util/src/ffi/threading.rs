@@ -13,6 +13,28 @@
 #[cfg(unix)]
 pub use posix::*;
 
+#[cfg(windows)]
+pub use windows::*;
+
+/// RED stubs for `util/threading-windows.c`. Every call fails or does
+/// nothing, so the Windows Tier 1 test asserts and fails.
+#[cfg(windows)]
+mod windows {
+    use core::ffi::{c_int, c_void};
+    use core::ptr;
+
+    /// # Safety
+    /// `event` is either null or a live out-pointer. The stub writes null.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn os_event_init(event: *mut *mut c_void, _type_: c_int) -> c_int {
+        if !event.is_null() {
+            // SAFETY: `event` is a live out-pointer when non-null.
+            unsafe { *event = ptr::null_mut() };
+        }
+        -1
+    }
+}
+
 #[cfg(unix)]
 mod posix {
     use core::ffi::{c_char, c_int, c_ulong, c_void};
