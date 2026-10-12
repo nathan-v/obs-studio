@@ -6,6 +6,8 @@
 
 #![cfg(unix)]
 
+use obs_c_oracle as _;
+
 use std::fs;
 use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
@@ -167,4 +169,67 @@ fn test_get_abs_path_ptr_dot() {
     let path = nix::abs_path(b".").unwrap();
     assert!(!path.is_empty());
     assert_eq!(path[0], b'/');
+}
+
+#[test]
+fn copy_file_matches_bytes_and_refuses_an_existing_dest() {
+    let tmp = Tmp::new();
+    let src = tmp.path("src");
+    let dst = tmp.path("dst");
+    fs::write(&src, b"abc").unwrap();
+    assert_eq!(nix::copy_file(bytes(&src), bytes(&dst)), 0);
+    assert_eq!(fs::read(&dst).unwrap(), b"abc");
+    assert_eq!(nix::copy_file(bytes(&src), bytes(&dst)), -1);
+}
+
+#[test]
+fn glob_lists_the_matches() {
+    let tmp = Tmp::new();
+    fs::write(tmp.path("a.txt"), b"a").unwrap();
+    fs::write(tmp.path("b.txt"), b"b").unwrap();
+    let pattern = tmp.path("*.txt");
+    let mut ents = nix::glob(bytes(&pattern)).unwrap();
+    ents.sort_by(|a, b| a.path.cmp(&b.path));
+    assert_eq!(ents.len(), 2);
+    assert!(ents.iter().all(|e| !e.directory));
+    assert!(ents[0].path.ends_with(b"a.txt"));
+    assert!(ents[1].path.ends_with(b"b.txt"));
+}
+
+#[test]
+fn sleepto_ns_past_returns_false() {
+    assert!(!nix::sleepto_ns(0));
+    assert!(!nix::sleepto_ns_fast(0));
+}
+
+#[test]
+fn parent_dir_matches_dirname() {
+    assert_eq!(nix::parent_dir(b"/usr/bin/obs"), b"/usr/bin");
+    assert_eq!(nix::parent_dir(b"/obs"), b"/");
+    assert_eq!(nix::parent_dir(b"obs"), b".");
+    assert_eq!(nix::parent_dir(b"/"), b"/");
+}
+
+#[test]
+fn cpuinfo_physical_cores_keeps_the_substring_match() {
+    let text = "\
+processor\t: 0
+physical id\t: 10
+cpu cores\t: 4
+
+processor\t: 1
+physical id\t: 1
+cpu cores\t: 8
+";
+    assert_eq!(nix::cpuinfo_physical_cores(text, 99), 4);
+    assert_eq!(nix::cpuinfo_physical_cores("processor\t: 0\n", 7), 7);
+}
+
+#[test]
+fn freebsd_smp_cores_parses_the_second_line() {
+    let text = b"\nFreeBSD/SMP: first\nFreeBSD/SMP: 2 package(s) x 4 core(s)\n";
+    assert_eq!(nix::freebsd_smp_cores(text, 99), 8);
+    assert_eq!(nix::freebsd_smp_cores(b"no smp here\n", 3), 3);
+    let one = b"\nFreeBSD/SMP: only one line\n";
+    assert_eq!(nix::freebsd_smp_cores(one, 5), 5);
 }
