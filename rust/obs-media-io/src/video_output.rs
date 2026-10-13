@@ -275,14 +275,18 @@ impl VideoOutput {
         if callback == 0 || divisor == 0 {
             return false;
         }
-        let mut guard = self.shared.inputs.lock();
         let from = self.output_scale();
-        guard.with_mut(|inputs| {
+        let mut guard = self.shared.inputs.lock();
+        // Decide under `&mut`, then drop that borrow before the host runs.
+        // `create_scaler` calls `blog`, and a log handler on this thread can
+        // connect again. The guard stays held so other threads still wait,
+        // matching the C input mutex around `video_input_init`.
+        let prepared = guard.with_mut(|inputs| {
             if inputs
                 .iter()
                 .any(|input| input.callback == callback && input.param == param)
             {
-                return false;
+                return None;
             }
             let mut conversion = conversion.unwrap_or(from);
             if conversion.width == 0 {
@@ -291,27 +295,33 @@ impl VideoOutput {
             if conversion.height == 0 {
                 conversion.height = from.height;
             }
-            let (scaler, buffers) = if needs_scaler(&conversion, &from) {
-                let scaler = match self.shared.host.create_scaler(&conversion, &from) {
-                    Ok(scaler) => scaler,
-                    Err(ScalerFail::BadConversion) => {
-                        self.shared.host.scaler_error(true);
-                        return false;
-                    }
-                    Err(ScalerFail::Failed) => {
-                        self.shared.host.scaler_error(false);
-                        return false;
-                    }
-                };
-                let format = video_format_from_c(conversion.format).unwrap_or(VideoFormat::None);
-                let mut buffers = Vec::with_capacity(MAX_CONVERT_BUFFERS);
-                for _ in 0..MAX_CONVERT_BUFFERS {
-                    buffers.push(VideoFrame::new(format, conversion.width, conversion.height));
+            Some((conversion, needs_scaler(&conversion, &from)))
+        });
+        let Some((conversion, scale)) = prepared else {
+            return false;
+        };
+        let (scaler, buffers) = if scale {
+            let scaler = match self.shared.host.create_scaler(&conversion, &from) {
+                Ok(scaler) => scaler,
+                Err(ScalerFail::BadConversion) => {
+                    self.shared.host.scaler_error(true);
+                    return false;
                 }
-                (Some(scaler), buffers)
-            } else {
-                (None, Vec::new())
+                Err(ScalerFail::Failed) => {
+                    self.shared.host.scaler_error(false);
+                    return false;
+                }
             };
+            let format = video_format_from_c(conversion.format).unwrap_or(VideoFormat::None);
+            let mut buffers = Vec::with_capacity(MAX_CONVERT_BUFFERS);
+            for _ in 0..MAX_CONVERT_BUFFERS {
+                buffers.push(VideoFrame::new(format, conversion.width, conversion.height));
+            }
+            (Some(scaler), buffers)
+        } else {
+            (None, Vec::new())
+        };
+        guard.with_mut(|inputs| {
             let first = inputs.is_empty();
             inputs.push(Input {
                 callback,
@@ -328,8 +338,8 @@ impl VideoOutput {
                 }
                 self.shared.raw_active.store(true, Ordering::SeqCst);
             }
-            true
-        })
+        });
+        true
     }
 
     pub(crate) fn disconnect(&self, callback: usize, param: usize) -> bool {
