@@ -14,8 +14,8 @@ static void inner_property_lookup(void **state)
 	(void)state;
 
 	const char doc[] = {
-		AMF_AVMPLUS, AMF3_OBJECT, 0x0b, 0x01, 0x03,         'a',  AMF3_OBJECT, AMF3_OBJECT,
-		0x0b,        0x01,        0x03, 'a',  AMF3_INTEGER, 0x00, 0x01,        0x01,
+		AMF_AVMPLUS, AMF3_OBJECT, 0x0b, 0x01,         0x03, 'a',  AMF3_OBJECT, 0x0b,
+		0x01,        0x03,        'a',  AMF3_INTEGER, 0x00, 0x01, 0x01,
 	};
 	AMFObject obj;
 	AMFObjectProperty *prop;
@@ -44,7 +44,7 @@ static void inner_property_lookup(void **state)
  * plus dynamic, so the object has only dynamic members, and the empty name
  * that closes the member list must not be stored as a property of its own.
  * This is the document the AMF3 spec describes; the use-after-free itself is
- * reproduced by the decoder-compatible nested document below. */
+ * reproduced by the nested document below. */
 static void flat_dynamic_object_terminator(void **state)
 {
 	(void)state;
@@ -68,19 +68,16 @@ static void flat_dynamic_object_terminator(void **state)
 	AMF_Reset(&obj);
 }
 
-/* A decoder-compatible document that reproduces the use-after-free: librtmp
- * reads a nested object's marker twice — once as the member type and once
- * as the object header — so each nested level emits it twice, and on master
- * the empty-name terminator was added with the stale union pointer
- * inherited from member "a". This is not a spec-valid document; it exists
- * to drive the decoder as real servers drive it. */
+/* A nested dynamic object previously appended the empty-name terminator
+ * with the stale union pointer inherited from member "a". Keep that
+ * use-after-free regression covered with the single-marker encoding (#288). */
 static void nested_dynamic_object(void **state)
 {
 	(void)state;
 
 	const char doc[] = {
-		AMF_AVMPLUS, AMF3_OBJECT, 0x0b, 0x01, 0x03,         'a',  AMF3_OBJECT, AMF3_OBJECT,
-		0x0b,        0x01,        0x03, 'a',  AMF3_INTEGER, 0x00, 0x01,        0x01,
+		AMF_AVMPLUS, AMF3_OBJECT, 0x0b, 0x01,         0x03, 'a',  AMF3_OBJECT, 0x0b,
+		0x01,        0x03,        'a',  AMF3_INTEGER, 0x00, 0x01, 0x01,
 	};
 	AMFObject obj;
 	AMFObjectProperty *prop;
