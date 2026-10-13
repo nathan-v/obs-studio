@@ -116,14 +116,27 @@ struct Input {
     cur: usize,
 }
 
-enum Step {
+/// What one input needs for this frame. The scaler and the convert buffer
+/// come out of the list so `scale` can log without holding `&mut` on it.
+enum Prep {
     Next,
-    Warn,
-    Call {
+    Direct {
         callback: usize,
         param: usize,
-        view: FrameView,
     },
+    Scale {
+        callback: usize,
+        param: usize,
+        cur: usize,
+        scaler: Box<dyn Scaler>,
+        buffer: Box<VideoFrame>,
+    },
+}
+
+enum Scaled {
+    Gone,
+    Failed,
+    Ready(FrameView),
 }
 
 struct Shared {
@@ -452,30 +465,53 @@ fn cur_frame(shared: &Shared, frame_time: u64) -> bool {
         let mut guard = shared.inputs.lock();
         let mut index = 0;
         loop {
-            let step = guard.with_mut(|inputs| {
+            let prep = guard.with_mut(|inputs| {
                 if index >= inputs.len() {
                     return None;
                 }
-                Some(next_step(&mut inputs[index], &source))
+                Some(prepare_input(&mut inputs[index]))
             });
-            let Some(step) = step else {
+            let Some(prep) = prep else {
                 break;
             };
-            match step {
-                Step::Next => index += 1,
-                Step::Warn => {
-                    shared.host.warn_scale_failed();
+            match prep {
+                Prep::Next => index += 1,
+                Prep::Direct { callback, param } => {
+                    // The `&mut` has ended. The guard stays held, so other
+                    // threads still wait. This thread's callback may connect.
+                    shared.host.deliver(callback, param, &source);
                     index += 1;
                 }
-                Step::Call {
+                Prep::Scale {
                     callback,
                     param,
-                    view,
+                    cur,
+                    mut scaler,
+                    mut buffer,
                 } => {
-                    // The `&mut` from `with_mut` has ended. The input guard
-                    // is still held, so other threads cannot connect or
-                    // disconnect. The callback may, on this thread.
-                    shared.host.deliver(callback, param, &view);
+                    // `video_scaler_scale` blogs when `sws_scale` fails. The
+                    // scaler and the buffer are not in the list for that call.
+                    let ok = scaler.scale(&source, &mut buffer);
+                    let scaled = guard.with_mut(|inputs| {
+                        let Some(input) = inputs
+                            .iter_mut()
+                            .find(|input| input.callback == callback && input.param == param)
+                        else {
+                            return Scaled::Gone;
+                        };
+                        input.scaler = Some(scaler);
+                        input.buffers.insert(cur, *buffer);
+                        if ok {
+                            Scaled::Ready(frame_view(&mut input.buffers[cur], source.timestamp))
+                        } else {
+                            Scaled::Failed
+                        }
+                    });
+                    match scaled {
+                        Scaled::Ready(view) => shared.host.deliver(callback, param, &view),
+                        Scaled::Failed => shared.host.warn_scale_failed(),
+                        Scaled::Gone => {}
+                    }
                     index += 1;
                 }
             }
@@ -506,49 +542,33 @@ fn cur_frame(shared: &Shared, frame_time: u64) -> bool {
     })
 }
 
-fn next_step(input: &mut Input, source: &FrameView) -> Step {
+fn prepare_input(input: &mut Input) -> Prep {
     let skip = input.counter;
     input.counter = input.counter.wrapping_add(1);
     if input.counter == input.divisor {
         input.counter = 0;
     }
     if skip != 0 {
-        return Step::Next;
+        return Prep::Next;
     }
-    if input.scaler.is_none() {
-        return Step::Call {
-            callback: input.callback,
-            param: input.param,
-            view: *source,
-        };
-    }
+    let callback = input.callback;
+    let param = input.param;
+    let Some(scaler) = input.scaler.take() else {
+        return Prep::Direct { callback, param };
+    };
     input.cur += 1;
     if input.cur == MAX_CONVERT_BUFFERS {
         input.cur = 0;
     }
     let cur = input.cur;
-    let ok = scale_at(input, cur, source);
-    if !ok {
-        return Step::Warn;
+    let buffer = Box::new(input.buffers.remove(cur));
+    Prep::Scale {
+        callback,
+        param,
+        cur,
+        scaler,
+        buffer,
     }
-    let view = frame_view(&mut input.buffers[cur], source.timestamp);
-    Step::Call {
-        callback: input.callback,
-        param: input.param,
-        view,
-    }
-}
-
-/// Scales into `buffers[cur]`. Split out so the scaler and the buffer can
-/// be borrowed together; they are different fields of `input`.
-fn scale_at(input: &mut Input, cur: usize, source: &FrameView) -> bool {
-    let Input {
-        scaler, buffers, ..
-    } = input;
-    scaler
-        .as_mut()
-        .expect("scaler")
-        .scale(source, &mut buffers[cur])
 }
 
 fn frame_view(frame: &mut VideoFrame, timestamp: u64) -> FrameView {
@@ -589,4 +609,122 @@ fn collapse_space(cs: i32) -> i32 {
 
 fn match_space(a: i32, b: i32) -> bool {
     a == VIDEO_CS_DEFAULT || b == VIDEO_CS_DEFAULT || collapse_space(a) == collapse_space(b)
+}
+
+#[cfg(test)]
+#[allow(unsafe_code)] // the scaler reenters through the test's output pointer
+mod tests {
+    use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
+    use std::sync::{Arc, Condvar, Mutex};
+    use std::time::Duration;
+
+    use super::{FrameView, OpenInfo, RawScale, Scaler, ScalerFail, VideoHost, VideoOutput};
+    use crate::video_frame::VideoFrame;
+    use crate::video_io::VideoFormat;
+
+    struct State {
+        output: AtomicPtr<VideoOutput>,
+        hit: Mutex<Vec<usize>>,
+        lock: Mutex<usize>,
+        cv: Condvar,
+    }
+
+    struct TestHost(Arc<State>);
+
+    struct Reenter {
+        state: Arc<State>,
+        once: AtomicBool,
+    }
+
+    impl Scaler for Reenter {
+        fn scale(&mut self, _src: &FrameView, dst: &mut VideoFrame) -> bool {
+            if self.once.swap(false, Ordering::SeqCst) {
+                let ptr = self.state.output.load(Ordering::Acquire);
+                assert!(!ptr.is_null());
+                // SAFETY: the test stores this pointer before `connect` and
+                // joins the video thread, via `stop`, before the output drops.
+                let output = unsafe { &*ptr };
+                assert!(output.connect(None, 1, 2, 0));
+            }
+            let _ = dst.linesize(0);
+            true
+        }
+    }
+
+    impl VideoHost for TestHost {
+        fn thread_start(&self) {}
+        fn profile_begin(&self) {}
+        fn profile_end(&self) {}
+        fn reenable(&self) {}
+        fn deliver(&self, callback: usize, _param: usize, _frame: &FrameView) {
+            self.0.hit.lock().unwrap().push(callback);
+            let mut count = self.0.lock.lock().unwrap();
+            *count += 1;
+            self.0.cv.notify_all();
+        }
+        fn warn_scale_failed(&self) {}
+        fn scaler_error(&self, _bad_conversion: bool) {}
+        fn log_skipped(&self, _skipped: i64, _total: i64) {}
+        fn create_scaler(
+            &self,
+            _dst: &RawScale,
+            _src: &RawScale,
+        ) -> Result<Box<dyn Scaler>, ScalerFail> {
+            Ok(Box::new(Reenter {
+                state: Arc::clone(&self.0),
+                once: AtomicBool::new(true),
+            }))
+        }
+    }
+
+    #[test]
+    fn scale_reenter_connects() {
+        let state = Arc::new(State {
+            output: AtomicPtr::new(std::ptr::null_mut()),
+            hit: Mutex::new(Vec::new()),
+            lock: Mutex::new(0),
+            cv: Condvar::new(),
+        });
+        let output = VideoOutput::open(
+            OpenInfo {
+                format: VideoFormat::Rgba as i32,
+                width: 4,
+                height: 4,
+                cache_size: 1,
+                range: 0,
+                colorspace: 0,
+            },
+            33_333_333,
+            Box::new(TestHost(Arc::clone(&state))),
+        )
+        .expect("open");
+        state.output.store(
+            std::ptr::from_ref(&output) as *mut VideoOutput,
+            Ordering::Release,
+        );
+        let conversion = RawScale {
+            format: VideoFormat::Rgba as i32,
+            width: 2,
+            height: 4,
+            range: 0,
+            colorspace: 0,
+        };
+        assert!(output.connect(Some(conversion), 1, 1, 0));
+        assert!(output.lock_frame(1, 1_000).is_some());
+        output.unlock_frame();
+
+        let count = state.lock.lock().unwrap();
+        let (count, timeout) = state
+            .cv
+            .wait_timeout_while(count, Duration::from_secs(2), |count| *count < 2)
+            .unwrap();
+        assert!(
+            !timeout.timed_out(),
+            "scale reentry did not deliver both inputs"
+        );
+        assert_eq!(*count, 2);
+        drop(count);
+        output.stop();
+        assert_eq!(state.hit.lock().unwrap().as_slice(), &[1, 2]);
+    }
 }
