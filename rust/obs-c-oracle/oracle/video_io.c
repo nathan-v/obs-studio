@@ -135,8 +135,8 @@ static bool vio_scaler_format_ok(enum video_format format)
 	}
 }
 
-int video_scaler_create(video_scaler_t **scaler, const struct video_scale_info *dst,
-			const struct video_scale_info *src, enum video_scale_type type)
+int video_scaler_create(video_scaler_t **scaler, const struct video_scale_info *dst, const struct video_scale_info *src,
+			enum video_scale_type type)
 {
 	(void)type;
 	if (!scaler)
