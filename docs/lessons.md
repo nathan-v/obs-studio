@@ -64,3 +64,10 @@ Append-only. Symptom / Cause / Fix / Tell. Read before diagnosing, not after.
 - **Cause:** libgcc emutls calls `pthread_getspecific` and loads `pthread_key_t` with a 32-bit `mov`. The oracle's w32-pthreads defines that symbol with a pointer-sized key. The linker bound emutls to w32-pthreads. A low 4GB heap (Wine, or the Windows debug heap) makes the truncated pointer still valid.
 - **Fix:** on `windows-gnu`, rename the oracle's `pthread_*`, `sem_*`, and `sched_*` symbols to `oracle_*` and link libwinpthread for the unprefixed names. `-include sys/stat.h` lets GCC 15 compile `platform.h`.
 - **The tell:** `nm` shows `oracle_pthread_getspecific` as a real function and `pthread_getspecific` as a jmp to `__imp_pthread_getspecific`. A fault address below 4GB while other pointers in the crash context are above 4GB is this truncation, not a null mutex.
+
+## 2026-10-14: `soldr cargo dylint` rustup storm on Windows
+
+- **Symptom:** `soldr cargo dylint --all -- --workspace --lib --bins` prints only `soldr: cargo diagnostic capture still running after 60s` and never starts `rustc`. A second run floods the machine with short-lived `rustup.exe` processes. `Get-Process` and `tasklist` then hang. `taskkill /F /IM rustup.exe` reports "no running instance" for PIDs that already exited.
+- **Cause:** not fully pinned. The driver soldr downloaded is a PE image named `dylint-driver` with no `.exe` suffix (`C:\Users\NV\.soldr\dylint\drivers\nightly-2026-05-28-x86_64-pc-windows-msvc\`). Copying it to `dylint-driver.exe` did not stop the storm. soldr's `rustup.exe` shim is `soldr.exe` itself, and `cargo-dylint` invokes `rustup` while soldr is capturing cargo stdout.
+- **Fix:** do not retry `soldr cargo dylint` on this host. Kill the tree with `taskkill /F /IM rustup.exe`, then `cargo-dylint.exe` and `cargo.exe`. Leave Dylint to GitHub CI. Clippy and `cargo test` still run.
+- **The tell:** heartbeats every 60 seconds and a flood of `rustup.exe`, with no `dylint-driver` and no `rustc`. A live Dylint run has both. The `.exe` copy is not the missing piece.
