@@ -295,6 +295,11 @@ fn main() {
     let windows_gnu =
         windows && std::env::var("CARGO_CFG_TARGET_ENV").ok().as_deref() == Some("gnu");
     if windows_gnu {
+        // audio-io.c includes <Windows.h>. MinGW's header is windows.h, and
+        // a case-sensitive host (Ubuntu's windows-gnu link) will not find
+        // the capital name. This directory is first, so the wrapper is the
+        // one that gets included.
+        oracle.include("oracle/mingw-case");
         // C99 printf (%zu) from MinGW's stdio, matching PRINTFATTR's
         // __gnu_printf__ archetype there.
         oracle.define("__USE_MINGW_ANSI_STDIO", Some("1"));
