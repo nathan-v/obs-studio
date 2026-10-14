@@ -71,3 +71,10 @@ Append-only. Symptom / Cause / Fix / Tell. Read before diagnosing, not after.
 - **Cause:** not fully pinned. The driver soldr downloaded is a PE image named `dylint-driver` with no `.exe` suffix (`C:\Users\NV\.soldr\dylint\drivers\nightly-2026-05-28-x86_64-pc-windows-msvc\`). Copying it to `dylint-driver.exe` did not stop the storm. soldr's `rustup.exe` shim is `soldr.exe` itself, and `cargo-dylint` invokes `rustup` while soldr is capturing cargo stdout.
 - **Fix:** do not retry `soldr cargo dylint` on this host. Kill the tree with `taskkill /F /IM rustup.exe`, then `cargo-dylint.exe` and `cargo.exe`. Leave Dylint to GitHub CI. Clippy and `cargo test` still run.
 - **The tell:** heartbeats every 60 seconds and a flood of `rustup.exe`, with no `dylint-driver` and no `rustc`. A live Dylint run has both. The `.exe` copy is not the missing piece.
+
+## 2026-10-14: Apple SDK unpack dies on MAX_PATH
+
+- **Symptom:** `soldr cargo clippy --target aarch64-apple-darwin` ends with `apple SDK unavailable for aarch64-apple-darwin: archive error: tar unpack: The filename or extension is too long. (os error 206)` and `blessed Apple SDK preparation did not produce an SDK`. The log is full of `tar symlink fallback` / `A required privilege is not held by the client. (os error 1314)`.
+- **Cause:** Windows will not create the SDK symlinks without the privilege, so soldr copies them, and a copied path then exceeds MAX_PATH. The staging directory is `C:\Users\NV\.soldr\bin\apple-sdk\14.5\.staging-<pid>-*`.
+- **Fix:** leave the Darwin cross targets to GitHub CI on this host. `x86_64-pc-windows-msvc` clippy and `cargo check --tests` still run.
+- **The tell:** error 206 after a long run of error 1314 symlink copies. A compile error names a `.rs` file. The MSVC target in the same loop can already have printed `OK`.
