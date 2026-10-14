@@ -141,7 +141,6 @@ const _: () = assert!(size_of::<LogicalProcessor>() == 32);
 #[link(name = "shell32")]
 #[link(name = "ole32")]
 #[link(name = "advapi32")]
-#[link(name = "psapi")]
 #[link(name = "rpcrt4")]
 #[link(name = "winmm")]
 unsafe extern "system" {
@@ -226,6 +225,11 @@ unsafe extern "system" {
     fn GetModuleFileNameW(module: Handle, buf: *mut u16, size: u32) -> u32;
     fn SetThreadExecutionState(flags: u32) -> u32;
     fn GlobalMemoryStatusEx(status: *mut MemoryStatusEx) -> i32;
+    // <psapi.h> maps GetProcessMemoryInfo to the kernel32 export
+    // K32GetProcessMemoryInfo (PSAPI_VERSION 2, Windows 7+), so the C build
+    // never links psapi.lib. A staticlib's #[link] does not reach obs.dll's
+    // CMake link line, so name the kernel32 symbol here (LNK2019 on #707).
+    #[link_name = "K32GetProcessMemoryInfo"]
     fn GetProcessMemoryInfo(process: Handle, counters: *mut ProcessMemoryCounters, cb: u32) -> i32;
     fn GetLogicalProcessorInformation(buf: *mut LogicalProcessor, len: *mut u32) -> i32;
     fn UuidCreate(uuid: *mut Uuid) -> i32;
