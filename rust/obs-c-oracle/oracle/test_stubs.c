@@ -58,6 +58,8 @@ uint64_t os_gettime_ns_stub(void)
 }
 #pragma comment(linker, "/alternatename:os_gettime_ns=os_gettime_ns_stub")
 #elif defined(_WIN32)
+uint64_t os_gettime_ns(void);
+
 __attribute__((weak)) uint64_t os_gettime_ns(void)
 {
 	return 0;

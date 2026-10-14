@@ -8,7 +8,8 @@
 //!
 //! `chdir` and the process-global version cache share one lock.
 
-#![cfg(windows)]
+// The C oracle for platform-windows.c is MSVC-only (obs-c-oracle build.rs).
+#![cfg(all(windows, target_env = "msvc"))]
 
 use std::ffi::{CStr, CString};
 use std::fs;

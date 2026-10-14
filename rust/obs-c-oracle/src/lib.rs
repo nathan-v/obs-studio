@@ -53,7 +53,7 @@ pub mod path_extension;
 pub mod pipe;
 #[cfg(unix)]
 pub mod platform_nix;
-#[cfg(windows)]
+#[cfg(all(windows, target_env = "msvc"))]
 pub mod platform_windows;
 pub mod profiler;
 pub mod profiler_snapshot;

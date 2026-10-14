@@ -93,7 +93,18 @@
 #define dstr_printf oracle_dstr_printf
 #define dstr_from_wcs oracle_dstr_from_wcs
 
+/* clang-cl (the cross-lint and soldr MSVC target) also reports two idioms
+ * in the unmodified original that cl.exe does not: an unused `size` and
+ * `= {sizeof(x)}` struct initializers. */
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunused-but-set-variable"
+#pragma clang diagnostic ignored "-Wmissing-field-initializers"
+#endif
 #include "util/platform-windows.c"
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 
 size_t oracle_os_dirent_size(void)
 {

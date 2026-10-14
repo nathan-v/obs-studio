@@ -1,6 +1,7 @@
 //! Tier 2: the public platform and Windows version structs match the C header.
 
-#![cfg(windows)]
+// The C oracle for platform-windows.c is MSVC-only (obs-c-oracle build.rs).
+#![cfg(all(windows, target_env = "msvc"))]
 
 use core::mem::{align_of, offset_of, size_of};
 

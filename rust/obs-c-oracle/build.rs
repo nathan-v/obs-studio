@@ -328,6 +328,11 @@ fn main() {
         .filter(|p| p.extension().is_some_and(|e| e == "c"))
         .filter(|p| unix || !p.to_string_lossy().ends_with("_posix.c"))
         .filter(|p| windows || !p.to_string_lossy().ends_with("_windows.c"))
+        // The original platform-windows.c has only ever been an MSVC
+        // translation unit; under MinGW -Wall -Werror (#516) it fails on
+        // headers and format checks, not on anything the port compares.
+        // Its oracle and the tests that use it are MSVC-only (#707).
+        .filter(|p| !(windows_gnu && p.file_name().is_some_and(|n| n == "platform_windows.c")))
         .collect();
     sources.sort();
     oracle.files(sources);
