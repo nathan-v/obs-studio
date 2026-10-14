@@ -446,8 +446,13 @@ fn task_times() -> Option<(i64, i64)> {
     let (sec, usec) = add_time(sec, usec, user.seconds, user.microseconds);
     let (sec, usec) = add_time(sec, usec, system.seconds, system.microseconds);
     let cpu_time = (gettime_ns() / 1000) as i64;
-    let sys_time = i64::from(sec) * 1_000_000 + i64::from(usec);
-    Some((cpu_time, sys_time))
+    Some((cpu_time, cpu_sys_micros(sec, usec)))
+}
+
+/// `seconds * 1000000 + microseconds` as C does it. Both factors are
+/// `int`, and the product is widened only after that multiply.
+fn cpu_sys_micros(seconds: i32, microseconds: i32) -> i64 {
+    i64::from(seconds.wrapping_mul(1_000_000).wrapping_add(microseconds))
 }
 
 /// `os_cpu_usage_info`. A `Box` in the shim, not `bmalloc`.
@@ -1007,5 +1012,12 @@ mod tests {
             size_of::<TaskBasicInfo64>() / size_of::<libc::natural_t>(),
             10
         );
+    }
+
+    #[test]
+    fn cpu_sys_micros_wraps_in_int() {
+        assert_eq!(super::cpu_sys_micros(1, 2), 1_000_002);
+        // 3000 * 1000000 does not fit in int32. C wraps, then stores int64.
+        assert_eq!(super::cpu_sys_micros(3000, 5), -1_294_967_291);
     }
 }
