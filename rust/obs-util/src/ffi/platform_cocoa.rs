@@ -164,7 +164,9 @@ mod shims {
     /// `token` came from `os_request_high_performance` or is null.
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn os_end_high_performance(token: *mut c_void) {
-        cocoa::end_high_performance(cocoa::PerformanceToken::from_raw(token));
+        // SAFETY: `token` is the retained activity from
+        // `os_request_high_performance`, or null. This call owns it.
+        cocoa::end_high_performance(unsafe { cocoa::PerformanceToken::from_raw(token) });
     }
 
     /// # Safety

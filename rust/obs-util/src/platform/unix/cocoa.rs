@@ -43,8 +43,11 @@ const TASK_BASIC_INFO_64: u32 = 18;
 const TASK_BASIC_INFO_64: u32 = 5;
 
 /// `struct task_basic_info_64` / `task_basic_info_64_2`. Same fields.
-/// arm64 passes flavor 18; x86_64 passes flavor 5.
-#[repr(C)]
+/// The SDK declares both under `#pragma pack(4)`, so `virtual_size` sits
+/// at offset 4. arm64 passes flavor 18; x86_64 passes flavor 5.
+/// Measured on macOS 27 (arm64): size 40, align 4, `user_time` at 20,
+/// `system_time` at 28, `policy` at 36. `TASK_BASIC_INFO_64_COUNT` is 10.
+#[repr(C, packed(4))]
 struct TaskBasicInfo64 {
     suspend_count: i32,
     virtual_size: u64,
@@ -428,8 +431,11 @@ fn task_times() -> Option<(i64, i64)> {
     if kr != libc::KERN_SUCCESS {
         return None;
     }
-    // SAFETY: `task_info` succeeded.
+    // SAFETY: `task_info` succeeded. The struct is packed(4). Copy the
+    // time fields; a field reference would not be aligned.
     let task_info = unsafe { task_info.assume_init() };
+    let user = unsafe { ptr::addr_of!(task_info.user_time).read_unaligned() };
+    let system = unsafe { ptr::addr_of!(task_info.system_time).read_unaligned() };
 
     let (sec, usec) = add_time(
         threads.user_time.seconds,
@@ -437,18 +443,8 @@ fn task_times() -> Option<(i64, i64)> {
         threads.system_time.seconds,
         threads.system_time.microseconds,
     );
-    let (sec, usec) = add_time(
-        sec,
-        usec,
-        task_info.user_time.seconds,
-        task_info.user_time.microseconds,
-    );
-    let (sec, usec) = add_time(
-        sec,
-        usec,
-        task_info.system_time.seconds,
-        task_info.system_time.microseconds,
-    );
+    let (sec, usec) = add_time(sec, usec, user.seconds, user.microseconds);
+    let (sec, usec) = add_time(sec, usec, system.seconds, system.microseconds);
     let cpu_time = (gettime_ns() / 1000) as i64;
     let sys_time = i64::from(sec) * 1_000_000 + i64::from(usec);
     Some((cpu_time, sys_time))
@@ -521,7 +517,11 @@ impl PerformanceToken {
     }
 
     /// `None` for a null token. Does not retain.
-    pub fn from_raw(raw: *mut c_void) -> Option<Self> {
+    ///
+    /// # Safety
+    /// A non-null `raw` is the retained token from `into_raw`, and this
+    /// call is its only remaining owner. `end_high_performance` releases it.
+    pub unsafe fn from_raw(raw: *mut c_void) -> Option<Self> {
         if raw.is_null() { None } else { Some(Self(raw)) }
     }
 }
@@ -983,4 +983,29 @@ pub unsafe fn copy_into_dstr(cfstring: *const c_void, encoding: u32, dstr: &mut 
     // Gap bytes past the first NUL are zero. C leaves them uninitialized.
     *dstr = Dstr::from_parts(buf, cap);
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use std::mem::{align_of, offset_of, size_of};
+
+    use super::TaskBasicInfo64;
+
+    /// Offsets measured from `mach/task_info.h` on macOS 27 arm64.
+    /// `struct task_basic_info_64` and `task_basic_info_64_2` match.
+    #[test]
+    fn task_basic_info_64_matches_the_packed_sdk_layout() {
+        assert_eq!(size_of::<TaskBasicInfo64>(), 40);
+        assert_eq!(align_of::<TaskBasicInfo64>(), 4);
+        assert_eq!(offset_of!(TaskBasicInfo64, suspend_count), 0);
+        assert_eq!(offset_of!(TaskBasicInfo64, virtual_size), 4);
+        assert_eq!(offset_of!(TaskBasicInfo64, resident_size), 12);
+        assert_eq!(offset_of!(TaskBasicInfo64, user_time), 20);
+        assert_eq!(offset_of!(TaskBasicInfo64, system_time), 28);
+        assert_eq!(offset_of!(TaskBasicInfo64, policy), 36);
+        assert_eq!(
+            size_of::<TaskBasicInfo64>() / size_of::<libc::natural_t>(),
+            10
+        );
+    }
 }
