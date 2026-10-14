@@ -434,7 +434,9 @@ fn main() {
         }
         pthreads.compile("obs_c_oracle_w32_pthreads");
         // platform-windows.c calls these. kernel32 is the default.
-        for lib in ["shell32", "ole32", "advapi32", "psapi", "rpcrt4", "winmm", "avrt"] {
+        for lib in [
+            "shell32", "ole32", "advapi32", "psapi", "rpcrt4", "winmm", "avrt",
+        ] {
             println!("cargo:rustc-link-lib={lib}");
         }
     }
