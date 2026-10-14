@@ -9,6 +9,7 @@
 #include <graphics/math-extra.h>
 #include <graphics/matrix3.h>
 #include <graphics/matrix4.h>
+#include <graphics/plane.h>
 #include <graphics/quat.h>
 #include <graphics/srgb.h>
 #include <graphics/vec2.h>
