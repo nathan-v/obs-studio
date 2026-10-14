@@ -42,11 +42,10 @@
 //! - Mid-dispatch removals that shrink the list below the loop's current
 //!   index: the C reads the stale darray tail (freed-capacity bytes) and
 //!   invokes it; the port skips — no defined C equivalent to reproduce.
-//! - Unix-first: built only where `crate::platform::with_audio_thread_port!`
-//!   expands (Unix) — the recursive mutex is a pthread one and there is no
-//!   Windows backend, so Windows keeps `media-io/audio-io.c` (its
-//!   exports stay marked C-side); the oracle's POSIX timing is gated the
-//!   same way. A Windows backend is separate work.
+//! - Built where `crate::platform::with_audio_thread_port!` expands.
+//!   Unix locks with a pthread recursive mutex. The Windows lock is a
+//!   failing stub until the `CRITICAL_SECTION` backend lands, so open
+//!   returns `AUDIO_OUTPUT_FAIL` there.
 //!
 use crate::audio_io::{AUDIO_OUTPUT_FRAMES, MAX_AUDIO_CHANNELS, MAX_AUDIO_MIXES};
 

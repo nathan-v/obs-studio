@@ -7,10 +7,6 @@
 //! without an obs core) are exercised through cmocka under ENABLE_RUST_LIBOBS
 //! ON/OFF; they are not reproducible inside a Rust test binary.
 //!
-//! Unix-first: the port is `#[cfg(unix)]`; Windows keeps media-io/audio-io.c.
-
-#![cfg(unix)]
-
 use std::ffi::{c_char, c_void};
 use std::ptr;
 use std::sync::atomic::{AtomicUsize, Ordering};

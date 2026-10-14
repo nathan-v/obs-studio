@@ -9,10 +9,6 @@
 //! the profiler/resampler symbols resolve into the oracle staticlib's POSIX
 //! threading build plus its stubs, like the FFI-level Tier 1 file.
 //!
-//! Unix-first: the port is `#[cfg(unix)]`; Windows keeps media-io/audio-io.c.
-
-#![cfg(unix)]
-
 use std::ptr;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
