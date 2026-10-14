@@ -1,7 +1,8 @@
 //! Tier 1 for the `audio-io.c` port: the open/connect/disconnect/getter
 //! surface and a live audio-thread tick, mirroring the pins in
 //! `test/cmocka/test_audio_io.c`. The ported thread runs for real here:
-//! `os_*` timing resolves to the oracle's POSIX threading build.
+//! `os_*` timing resolves to the host clock in obs-util and the oracle's
+//! threading build.
 //!
 //! The C test's crash-only pins (NULL-handle getter faults, thread running
 //! without an obs core) are exercised through cmocka under ENABLE_RUST_LIBOBS

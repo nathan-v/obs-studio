@@ -13,6 +13,7 @@ cfg_select! {
     unix => {
         #[allow(unsafe_code)] // pthread mutex calls; see the module docs
         mod unix;
+        pub(crate) use unix::AudioThreadClass;
         pub(crate) use unix::RecursiveMutex;
 
         /// Expands its items only on hosts that build the `audio-io.c` port.
@@ -23,6 +24,7 @@ cfg_select! {
     windows => {
         #[allow(unsafe_code)] // Win32 critical section; see the module docs
         mod windows;
+        pub(crate) use windows::AudioThreadClass;
         pub(crate) use windows::RecursiveMutex;
 
         /// Expands its items only on hosts that build the `audio-io.c` port.
