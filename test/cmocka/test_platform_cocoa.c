@@ -259,7 +259,7 @@ static void test_cfstr_null_and_roundtrip(void **state)
 static void test_platform_cocoa_is_apple_only(void **state)
 {
 	(void)state;
-	assert_true(true);
+	assert_true(1);
 }
 #endif
 
