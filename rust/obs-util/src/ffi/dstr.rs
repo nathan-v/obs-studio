@@ -92,6 +92,28 @@ unsafe fn write(d: *mut dstr, new: Dstr) {
     d.capacity = cap;
 }
 
+/// Reads `*d` into the safe model.
+///
+/// # Safety
+///
+/// `d` must point at a valid `dstr` whose `array` is null or holds `len`
+/// readable bytes.
+pub(crate) unsafe fn read_model(d: *const dstr) -> Dstr {
+    // SAFETY: the caller guarantees `d` is valid.
+    unsafe { read(d) }
+}
+
+/// Stores `new` into `*d`.
+///
+/// # Safety
+///
+/// `d` must point at a valid `dstr` whose `array` is null or came from
+/// `bmalloc`/`brealloc`.
+pub(crate) unsafe fn write_model(d: *mut dstr, new: Dstr) {
+    // SAFETY: the caller guarantees `d` is valid.
+    unsafe { write(d, new) }
+}
+
 /// Runs `f` on the safe model of `*d` and stores the result.
 ///
 /// # Safety
