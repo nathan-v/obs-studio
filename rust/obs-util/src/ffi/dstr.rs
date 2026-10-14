@@ -94,10 +94,13 @@ unsafe fn write(d: *mut dstr, new: Dstr) {
 
 /// Reads `*d` into the safe model.
 ///
+/// The Cocoa shims are the only callers, and that module is macOS-only.
+///
 /// # Safety
 ///
 /// `d` must point at a valid `dstr` whose `array` is null or holds `len`
 /// readable bytes.
+#[cfg(target_os = "macos")]
 pub(crate) unsafe fn read_model(d: *const dstr) -> Dstr {
     // SAFETY: the caller guarantees `d` is valid.
     unsafe { read(d) }
@@ -105,10 +108,13 @@ pub(crate) unsafe fn read_model(d: *const dstr) -> Dstr {
 
 /// Stores `new` into `*d`.
 ///
+/// The Cocoa shims are the only callers, and that module is macOS-only.
+///
 /// # Safety
 ///
 /// `d` must point at a valid `dstr` whose `array` is null or came from
 /// `bmalloc`/`brealloc`.
+#[cfg(target_os = "macos")]
 pub(crate) unsafe fn write_model(d: *mut dstr, new: Dstr) {
     // SAFETY: the caller guarantees `d` is valid.
     unsafe { write(d, new) }

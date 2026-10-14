@@ -973,7 +973,9 @@ pub unsafe fn copy_into_dstr(cfstring: *const c_void, encoding: u32, dstr: &mut 
         *dstr = Dstr::from_parts(bytes, cap);
         return false;
     }
-    let cap = if max_size + 1 <= cap {
+    // `dstr_resize` ensures `max_size + 1`. `max_size < cap` is that check
+    // without overflowing the addition.
+    let cap = if max_size < cap {
         cap
     } else {
         grow_capacity(cap, max_size + 1)
