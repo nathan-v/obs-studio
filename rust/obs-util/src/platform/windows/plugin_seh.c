@@ -37,8 +37,7 @@ static int image_has_obs_export(const BYTE *base, const IMAGE_NT_HEADERS *nt_hea
 		return 0;
 
 	export_section = last_section;
-	export_dir = (const IMAGE_EXPORT_DIRECTORY *)(base + data_dir->VirtualAddress -
-						      export_section->VirtualAddress +
+	export_dir = (const IMAGE_EXPORT_DIRECTORY *)(base + data_dir->VirtualAddress - export_section->VirtualAddress +
 						      export_section->PointerToRawData);
 	if (export_dir->NumberOfNames == 0)
 		return 0;
