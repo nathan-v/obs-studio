@@ -458,6 +458,11 @@ fn main() {
         owned_flags.push("-Wno-int-conversion".to_string());
         // The original file stores a sysctl result it never reads.
         owned_flags.push("-Wno-unused-but-set-variable".to_string());
+        // soldr appends CFLAGS after the builder flags and restates
+        // -mmacosx-version-min=10.12, so a version-min here does not
+        // win. The file uses NSURL keys from 10.13. The project target
+        // is 13.0 (CMakePresets.json). Silence that one cross warning.
+        owned_flags.push("-Wno-unguarded-availability-new".to_string());
     }
     let mut hash_flags: Vec<&str> = flags.clone();
     hash_flags.extend(owned_flags.iter().map(String::as_str));
@@ -490,6 +495,7 @@ fn main() {
             .flag("-Wno-int-conversion")
             .flag("-Wno-unused-but-set-variable")
             .flag("-Wno-error=unused-command-line-argument")
+            .flag("-Wno-unguarded-availability-new")
             .include(&libobs)
             .include("oracle/obsconfig")
             .file(manifest.join("oracle/platform_cocoa.m"));
