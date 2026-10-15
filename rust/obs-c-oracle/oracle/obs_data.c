@@ -2,6 +2,12 @@
  * bmalloc, dstr, os_*, blog, and jansson stay unprefixed. The host
  * file obs_data_host.c supplies os_quick_read_utf8_file and the two
  * os_quick_write_utf8_file entry points, which still live in platform.c. */
+
+/* obs-data.c pulls in threading.h, whose recursive-mutex helper needs the
+ * POSIX/XSI pthread declarations that strict -std=c11 hides. */
+#ifndef _WIN32
+#define _GNU_SOURCE
+#endif
 #define obs_data_addref oracle_obs_data_addref
 #define obs_data_apply oracle_obs_data_apply
 #define obs_data_array_addref oracle_obs_data_array_addref
