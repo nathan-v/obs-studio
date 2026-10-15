@@ -32,6 +32,11 @@
 #define HAVE_SYNC_BUILTINS 1
 #else
 #define USE_WINDOWS_CRYPTOAPI 1
+/* MSVC has no ssize_t, and __int64 is an MSVC keyword. This header is
+ * the first include (HAVE_CONFIG_H), so the windows-gnu probe has not
+ * seen a system header yet and rejects __int64. MinGW's own headers
+ * define ssize_t. MSVC keeps the keyword. */
+#if defined(_MSC_VER)
 #ifndef _SSIZE_T_DEFINED
 #ifdef _WIN64
 typedef __int64 ssize_t;
@@ -39,6 +44,9 @@ typedef __int64 ssize_t;
 typedef int ssize_t;
 #endif
 #define _SSIZE_T_DEFINED
+#endif
+#else
+#include <sys/types.h>
 #endif
 #if !defined(_MSC_VER)
 #define HAVE_ATOMIC_BUILTINS 1
