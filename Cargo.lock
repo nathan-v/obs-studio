@@ -375,6 +375,7 @@ name = "libobs-rust"
 version = "0.1.0"
 dependencies = [
  "obs-codec",
+ "obs-data",
  "obs-graphics",
  "obs-media-io",
  "obs-util",
