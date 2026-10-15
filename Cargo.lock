@@ -428,6 +428,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "obs-data"
+version = "0.1.0"
+dependencies = [
+ "cc",
+ "libc",
+ "obs-c-oracle",
+ "obs-util",
+ "proptest",
+]
+
+[[package]]
 name = "obs-graphics"
 version = "0.1.0"
 dependencies = [
