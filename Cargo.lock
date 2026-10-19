@@ -485,6 +485,7 @@ dependencies = [
  "obs-c-oracle",
  "obs-callback",
  "obs-hotkey",
+ "obs-missing-files",
  "obs-properties",
  "obs-util",
  "proptest",
@@ -532,6 +533,13 @@ dependencies = [
  "obs-graphics",
  "obs-util",
  "proptest",
+]
+
+[[package]]
+name = "obs-missing-files"
+version = "0.1.0"
+dependencies = [
+ "obs-util",
 ]
 
 [[package]]
