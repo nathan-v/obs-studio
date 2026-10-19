@@ -74,6 +74,20 @@ impl Calldata<'static> {
             overflows: 0,
         }
     }
+
+    /// Owned copy of an existing stack. `bytes` is the full capacity.
+    /// A null C stack uses [`Self::new`] instead: an empty copy is not the
+    /// first-allocation path.
+    pub(crate) fn from_copy(bytes: &[u8], size: usize, fixed: bool) -> Self {
+        let capacity = bytes.len();
+        Self {
+            storage: Storage::Owned(bytes.to_vec()),
+            size,
+            capacity,
+            fixed,
+            overflows: 0,
+        }
+    }
 }
 
 impl<'a> Calldata<'a> {
@@ -137,7 +151,11 @@ impl<'a> Calldata<'a> {
     }
 
     pub fn set_data(&mut self, name: &str, data: &[u8]) {
-        let name = c_name(name);
+        self.set_bytes(c_name(name), data);
+    }
+
+    pub(crate) fn set_bytes(&mut self, name: &[u8], data: &[u8]) {
+        let name = c_name_bytes(name);
         if name.is_empty() {
             return;
         }
@@ -156,7 +174,11 @@ impl<'a> Calldata<'a> {
 
     /// `Some` only when `name` is stored with exactly `size` bytes.
     pub fn get_data(&self, name: &str, size: usize) -> Option<&[u8]> {
-        let name = c_name(name);
+        self.get_bytes(c_name(name), size)
+    }
+
+    pub(crate) fn get_bytes(&self, name: &[u8], size: usize) -> Option<&[u8]> {
+        let name = c_name_bytes(name);
         if name.is_empty() {
             return None;
         }
@@ -177,7 +199,11 @@ impl<'a> Calldata<'a> {
     }
 
     pub fn get_string(&self, name: &str) -> StringGet<'_> {
-        let name = c_name(name);
+        self.string_at(c_name(name))
+    }
+
+    pub(crate) fn string_at(&self, name: &[u8]) -> StringGet<'_> {
+        let name = c_name_bytes(name);
         if name.is_empty() {
             return StringGet::Missing;
         }
@@ -416,10 +442,13 @@ impl<'a> Calldata<'a> {
 
 /// Bytes of `name` up to the first NUL. C measures the name with `strlen`.
 fn c_name(name: &str) -> &[u8] {
-    let bytes = name.as_bytes();
-    match bytes.iter().position(|b| *b == 0) {
-        Some(i) => &bytes[..i],
-        None => bytes,
+    c_name_bytes(name.as_bytes())
+}
+
+fn c_name_bytes(name: &[u8]) -> &[u8] {
+    match name.iter().position(|b| *b == 0) {
+        Some(i) => &name[..i],
+        None => name,
     }
 }
 
