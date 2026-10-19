@@ -5,6 +5,7 @@ mod decl;
 mod decl_parity;
 mod layout;
 mod parity;
+mod proc;
 
 use std::sync::Mutex;
 

@@ -7,9 +7,11 @@
 
 pub mod calldata;
 pub mod decl;
+pub mod proc;
 
 #[allow(unsafe_code)]
 pub mod ffi;
 
 pub use calldata::{Calldata, FIXED_OVERFLOW_MESSAGE, StringGet};
 pub use decl::{Decl, DeclParam, DeclParse, ParamType, parse_decl};
+pub use proc::{AddOutcome, PreparedCall, ProcHandler};
