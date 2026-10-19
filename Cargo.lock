@@ -404,6 +404,7 @@ dependencies = [
  "obs-graphics",
  "obs-hotkey",
  "obs-media-io",
+ "obs-missing-files",
  "obs-properties",
  "obs-util",
 ]

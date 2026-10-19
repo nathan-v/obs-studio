@@ -25,13 +25,19 @@ use obs_missing_files::ffi::missing_files::{
 use obs_missing_files::{SCRIPT, SOURCE};
 use obs_util::ffi::bmem::bnum_allocs;
 
+mod parity;
+
 const MARKER_ENV: &str = "OBS_MISSING_FILES_ISOLATED_TEST";
 
-struct Hit {
-    n: u32,
-    src: usize,
-    path: usize,
-    data: usize,
+/// Serializes the cargo stand-in for `obs_source_get_name`. Tier 1 children
+/// each have their own process. Differential tests in this process share it.
+pub(super) static SOURCE_LOCK: Mutex<()> = Mutex::new(());
+
+pub(super) struct Hit {
+    pub(super) n: u32,
+    pub(super) src: usize,
+    pub(super) path: usize,
+    pub(super) data: usize,
 }
 
 static HIT: Mutex<Hit> = Mutex::new(Hit {
@@ -44,12 +50,12 @@ static HIT: Mutex<Hit> = Mutex::new(Hit {
 static SOURCE_NAME: AtomicPtr<c_char> = AtomicPtr::new(std::ptr::null_mut());
 static SOURCE_PRIVATE: AtomicPtr<c_void> = AtomicPtr::new(std::ptr::null_mut());
 
-fn set_source(name: *const c_char, private: *mut c_void) {
+pub(super) fn set_source(name: *const c_char, private: *mut c_void) {
     SOURCE_NAME.store(name.cast_mut(), Ordering::SeqCst);
     SOURCE_PRIVATE.store(private, Ordering::SeqCst);
 }
 
-fn allocs() -> i64 {
+pub(super) fn allocs() -> i64 {
     // SAFETY: reads the process-wide counter.
     unsafe { bnum_allocs() as i64 }
 }
@@ -61,7 +67,7 @@ fn cstr<'a>(ptr: *const c_char) -> &'a CStr {
     unsafe { CStr::from_ptr(ptr) }
 }
 
-fn reset_hit() {
+pub(super) fn reset_hit() {
     *HIT.lock().expect("hit lock") = Hit {
         n: 0,
         src: 0,
@@ -70,7 +76,7 @@ fn reset_hit() {
     };
 }
 
-fn hit() -> Hit {
+pub(super) fn hit() -> Hit {
     let guard = HIT.lock().expect("hit lock");
     Hit {
         n: guard.n,
@@ -80,7 +86,11 @@ fn hit() -> Hit {
     }
 }
 
-unsafe extern "C" fn on_replace(src: *mut c_void, path: *const c_char, data: *mut c_void) {
+pub(super) unsafe extern "C" fn on_replace(
+    src: *mut c_void,
+    path: *const c_char,
+    data: *mut c_void,
+) {
     let mut hit = HIT.lock().expect("hit lock");
     hit.n += 1;
     hit.src = src as usize;
@@ -154,7 +164,7 @@ fn isolated(test: &str) -> bool {
     false
 }
 
-fn child(name: &str) -> bool {
+pub(super) fn child(name: &str) -> bool {
     isolated(name)
 }
 
@@ -436,7 +446,7 @@ fn script_and_unknown_issue_test() {
             c"script.lua".as_ptr(),
             Some(on_replace),
             SCRIPT,
-            1 as *mut c_void,
+            std::ptr::dangling_mut(),
             (&raw mut marker).cast(),
         )
     };
@@ -445,7 +455,7 @@ fn script_and_unknown_issue_test() {
             c"other.bin".as_ptr(),
             Some(on_replace),
             2,
-            2 as *mut c_void,
+            std::ptr::dangling_mut(),
             (&raw mut marker).cast(),
         )
     };
@@ -500,11 +510,12 @@ fn source_snapshot_test() {
     if !child(concat!(module_path!(), "::source_snapshot_test")) {
         return;
     }
+    let _source = SOURCE_LOCK.lock().expect("source stand-in");
     let mut marker = 0i32;
     let mut private_data = 0i32;
     let clip = c"clip";
     let renamed = c"renamed";
-    let source = 1 as *mut c_void;
+    let source = std::ptr::dangling_mut();
     set_source(clip.as_ptr(), (&raw mut private_data).cast());
 
     let before_file = allocs();
