@@ -6,7 +6,12 @@
 //! not endorsed. `bnum_allocs` stays with that C test: this core keeps an
 //! owned buffer, and the shim is what calls `bmalloc`.
 
-use std::marker::PhantomData;
+use std::mem::size_of;
+
+const USZ: usize = size_of::<usize>();
+/// First owned allocation. A smaller parameter block is still reported as
+/// its real used size.
+const FIRST_ALLOC: usize = 128;
 
 /// `blog` text for a fixed stack that cannot grow. The shim logs this at
 /// `LOG_ERROR` and does not store the write.
@@ -23,74 +28,185 @@ pub enum StringGet<'a> {
     Data(&'a [u8]),
 }
 
+enum Storage<'a> {
+    Empty,
+    Owned(Vec<u8>),
+    Fixed(&'a mut [u8]),
+}
+
+enum Find {
+    /// `size == 0`. C does not walk the stack.
+    Empty,
+    /// Index of the parameter's data-size field.
+    Found(usize),
+    /// Index of the terminating 0.
+    End(usize),
+    /// The size fields walk off the used bytes. API-built stacks do not.
+    Corrupt,
+}
+
 /// Procedure-call parameter stack.
 ///
 /// An owned stack grows. A fixed stack borrows a caller buffer and refuses
 /// a write that does not fit.
 pub struct Calldata<'a> {
-    _marker: PhantomData<&'a mut [u8]>,
+    storage: Storage<'a>,
+    size: usize,
+    capacity: usize,
+    fixed: bool,
+    overflows: u32,
+}
+
+impl Default for Calldata<'static> {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Calldata<'static> {
     /// Empty stack. Nothing is allocated until the first stored parameter.
     pub fn new() -> Self {
-        todo!()
+        Self {
+            storage: Storage::Empty,
+            size: 0,
+            capacity: 0,
+            fixed: false,
+            overflows: 0,
+        }
     }
 }
 
 impl<'a> Calldata<'a> {
     /// Borrow `buf` as a fixed stack. The first `size_t` is cleared.
-    pub fn fixed(_buf: &'a mut [u8]) -> Self {
-        todo!()
+    pub fn fixed(buf: &'a mut [u8]) -> Self {
+        let capacity = buf.len();
+        let mut cd = Self {
+            storage: Storage::Fixed(buf),
+            size: 0,
+            capacity,
+            fixed: true,
+            overflows: 0,
+        };
+        cd.clear();
+        cd
     }
 
     pub fn clear(&mut self) {
-        todo!()
+        if matches!(self.storage, Storage::Empty) {
+            return;
+        }
+        self.size = USZ;
+        let buf = self.bytes_mut();
+        if buf.len() >= USZ {
+            write_usize(buf, 0, 0);
+        }
     }
 
     /// Release an owned stack. A fixed stack is left untouched.
     pub fn free(&mut self) {
-        todo!()
+        if !self.fixed {
+            self.storage = Storage::Empty;
+        }
     }
 
     pub fn size(&self) -> usize {
-        todo!()
+        self.size
     }
 
     pub fn capacity(&self) -> usize {
-        todo!()
+        self.capacity
     }
 
     pub fn is_fixed(&self) -> bool {
-        todo!()
+        self.fixed
     }
 
     /// The whole allocation, or `None` when nothing has been allocated.
     /// Bytes past [`Self::size`] are not defined.
     pub fn stack(&self) -> Option<&[u8]> {
-        todo!()
+        match &self.storage {
+            Storage::Empty => None,
+            Storage::Owned(bytes) => Some(bytes.as_slice()),
+            Storage::Fixed(bytes) => Some(bytes),
+        }
     }
 
     /// How many fixed writes were refused. The shim logs each one.
     pub fn overflow_count(&self) -> u32 {
-        todo!()
+        self.overflows
     }
 
-    pub fn set_data(&mut self, _name: &str, _data: &[u8]) {
-        todo!()
+    pub fn set_data(&mut self, name: &str, data: &[u8]) {
+        let name = c_name(name);
+        if name.is_empty() {
+            return;
+        }
+        if !self.fixed && matches!(self.storage, Storage::Empty) {
+            self.set_first(name, data);
+            return;
+        }
+        match find_param(self.bytes(), self.size, name) {
+            Find::Found(pos) => self.replace_param(pos, data),
+            Find::End(pos) => self.append_param(pos, name, data),
+            // `size == 0` with a live stack is undefined in C (the cursor
+            // is never written). API-built stacks are not in that state.
+            Find::Empty | Find::Corrupt => {}
+        }
     }
 
     /// `Some` only when `name` is stored with exactly `size` bytes.
-    pub fn get_data(&self, _name: &str, _size: usize) -> Option<&[u8]> {
-        todo!()
+    pub fn get_data(&self, name: &str, size: usize) -> Option<&[u8]> {
+        let name = c_name(name);
+        if name.is_empty() {
+            return None;
+        }
+        let bytes = self.bytes();
+        let Find::Found(pos) = find_param(bytes, self.size, name) else {
+            return None;
+        };
+        let data_size = read_usize_within(bytes, pos, self.size)?;
+        if data_size != size {
+            return None;
+        }
+        let start = pos + USZ;
+        let end = start.checked_add(data_size)?;
+        if end > self.size {
+            return None;
+        }
+        bytes.get(start..end)
     }
 
-    pub fn get_string(&self, _name: &str) -> StringGet<'_> {
-        todo!()
+    pub fn get_string(&self, name: &str) -> StringGet<'_> {
+        let name = c_name(name);
+        if name.is_empty() {
+            return StringGet::Missing;
+        }
+        let bytes = self.bytes();
+        let Find::Found(pos) = find_param(bytes, self.size, name) else {
+            return StringGet::Missing;
+        };
+        let Some(data_size) = read_usize_within(bytes, pos, self.size) else {
+            return StringGet::Missing;
+        };
+        if data_size == 0 {
+            return StringGet::Null;
+        }
+        let start = pos + USZ;
+        let Some(end) = start.checked_add(data_size) else {
+            return StringGet::Missing;
+        };
+        if end > self.size {
+            return StringGet::Missing;
+        }
+        match bytes.get(start..end) {
+            Some(data) => StringGet::Data(data),
+            None => StringGet::Missing,
+        }
     }
 
     /// `None` for a missing name and for a null string. `Some("")` for an
-    /// empty C string.
+    /// empty C string. Non-UTF-8 bytes are `None`; [`Self::get_string`]
+    /// still returns them.
     pub fn string(&self, name: &str) -> Option<&str> {
         match self.get_string(name) {
             StringGet::Data(bytes) => {
@@ -106,7 +222,7 @@ impl<'a> Calldata<'a> {
     }
 
     pub fn get_int(&self, name: &str) -> Option<i64> {
-        let bytes = self.get_data(name, std::mem::size_of::<i64>())?;
+        let bytes = self.get_data(name, size_of::<i64>())?;
         Some(i64::from_ne_bytes(bytes.try_into().ok()?))
     }
 
@@ -119,7 +235,7 @@ impl<'a> Calldata<'a> {
     }
 
     pub fn get_float(&self, name: &str) -> Option<f64> {
-        let bytes = self.get_data(name, std::mem::size_of::<f64>())?;
+        let bytes = self.get_data(name, size_of::<f64>())?;
         Some(f64::from_ne_bytes(bytes.try_into().ok()?))
     }
 
@@ -145,7 +261,7 @@ impl<'a> Calldata<'a> {
     }
 
     pub fn get_ptr(&self, name: &str) -> Option<usize> {
-        let bytes = self.get_data(name, std::mem::size_of::<usize>())?;
+        let bytes = self.get_data(name, size_of::<usize>())?;
         Some(usize::from_ne_bytes(bytes.try_into().ok()?))
     }
 
@@ -166,5 +282,276 @@ impl<'a> Calldata<'a> {
             }
             None => self.set_data(name, &[]),
         }
+    }
+
+    fn set_first(&mut self, name: &[u8], data: &[u8]) {
+        let name_len = name.len() + 1;
+        let used = USZ * 3 + name_len + data.len();
+        let cap = if used < FIRST_ALLOC {
+            FIRST_ALLOC
+        } else {
+            used
+        };
+        let mut buf = vec![0u8; cap];
+        write_param(&mut buf, 0, name, data);
+        self.size = used;
+        self.capacity = cap;
+        self.fixed = false;
+        self.storage = Storage::Owned(buf);
+    }
+
+    fn replace_param(&mut self, pos: usize, data: &[u8]) {
+        let cur_size = {
+            let bytes = self.bytes();
+            match read_usize_within(bytes, pos, self.size) {
+                Some(size) => size,
+                None => return,
+            }
+        };
+        let new_size = data.len();
+        if cur_size < new_size {
+            let offset = new_size - cur_size;
+            let Some(needed) = self.size.checked_add(offset) else {
+                return;
+            };
+            if !self.ensure(needed) {
+                return;
+            }
+            let old = self.size;
+            if pos > old {
+                return;
+            }
+            let tail = old - pos;
+            self.bytes_mut().copy_within(pos..pos + tail, pos + offset);
+            self.size = old + offset;
+        } else if cur_size > new_size {
+            let offset = cur_size - new_size;
+            if offset > self.size || pos > self.size - offset {
+                return;
+            }
+            let new_total = self.size - offset;
+            let tail = new_total - pos;
+            self.bytes_mut()
+                .copy_within(pos + offset..pos + offset + tail, pos);
+            self.size = new_total;
+        }
+        self.write_data(pos, data);
+    }
+
+    fn append_param(&mut self, pos: usize, name: &[u8], data: &[u8]) {
+        let name_len = name.len() + 1;
+        let Some(add) = name_len
+            .checked_add(data.len())
+            .and_then(|n| n.checked_add(USZ * 2))
+        else {
+            return;
+        };
+        let Some(needed) = self.size.checked_add(add) else {
+            return;
+        };
+        if !self.ensure(needed) {
+            return;
+        }
+        self.size += add;
+        let buf = self.bytes_mut();
+        write_named(buf, pos, name, data);
+    }
+
+    fn write_data(&mut self, pos: usize, data: &[u8]) {
+        let buf = self.bytes_mut();
+        if !write_usize(buf, pos, data.len()) {
+            return;
+        }
+        if data.is_empty() {
+            return;
+        }
+        let start = pos + USZ;
+        let Some(end) = start.checked_add(data.len()) else {
+            return;
+        };
+        if let Some(slot) = buf.get_mut(start..end) {
+            slot.copy_from_slice(data);
+        }
+    }
+
+    /// `cd_ensure_capacity`: grow when `new_size >= capacity`. Fixed stacks
+    /// refuse instead of allocating.
+    fn ensure(&mut self, new_size: usize) -> bool {
+        if new_size < self.capacity {
+            return true;
+        }
+        if self.fixed {
+            self.overflows += 1;
+            return false;
+        }
+        let mut new_cap = self.capacity.saturating_mul(2);
+        if new_cap < new_size {
+            new_cap = new_size;
+        }
+        match &mut self.storage {
+            Storage::Owned(bytes) => bytes.resize(new_cap, 0),
+            Storage::Empty => self.storage = Storage::Owned(vec![0u8; new_cap]),
+            Storage::Fixed(_) => return false,
+        }
+        self.capacity = new_cap;
+        true
+    }
+
+    fn bytes(&self) -> &[u8] {
+        match &self.storage {
+            Storage::Empty => &[],
+            Storage::Owned(bytes) => bytes.as_slice(),
+            Storage::Fixed(bytes) => bytes,
+        }
+    }
+
+    fn bytes_mut(&mut self) -> &mut [u8] {
+        match &mut self.storage {
+            Storage::Empty => &mut [],
+            Storage::Owned(bytes) => bytes.as_mut_slice(),
+            Storage::Fixed(bytes) => bytes,
+        }
+    }
+}
+
+/// Bytes of `name` up to the first NUL. C measures the name with `strlen`.
+fn c_name(name: &str) -> &[u8] {
+    let bytes = name.as_bytes();
+    match bytes.iter().position(|b| *b == 0) {
+        Some(i) => &bytes[..i],
+        None => bytes,
+    }
+}
+
+fn name_eq(stored: &[u8], name: &[u8]) -> bool {
+    let Some(end) = stored.iter().position(|b| *b == 0) else {
+        return false;
+    };
+    &stored[..end] == name
+}
+
+fn find_param(bytes: &[u8], size: usize, name: &[u8]) -> Find {
+    if size == 0 {
+        return Find::Empty;
+    }
+    if size > bytes.len() {
+        return Find::Corrupt;
+    }
+    let Some(mut name_size) = read_usize_within(bytes, 0, size) else {
+        return Find::Corrupt;
+    };
+    let mut pos = USZ;
+    while name_size != 0 {
+        let Some(name_end) = pos.checked_add(name_size) else {
+            return Find::Corrupt;
+        };
+        if name_end > size {
+            return Find::Corrupt;
+        }
+        let matched = name_eq(&bytes[pos..name_end], name);
+        pos = name_end;
+        if matched {
+            return Find::Found(pos);
+        }
+        let Some(param_size) = read_usize_within(bytes, pos, size) else {
+            return Find::Corrupt;
+        };
+        pos += USZ;
+        let Some(next) = pos.checked_add(param_size) else {
+            return Find::Corrupt;
+        };
+        if next > size {
+            return Find::Corrupt;
+        }
+        pos = next;
+        let Some(next_name) = read_usize_within(bytes, pos, size) else {
+            return Find::Corrupt;
+        };
+        name_size = next_name;
+        pos += USZ;
+    }
+    if pos < USZ {
+        return Find::Corrupt;
+    }
+    Find::End(pos - USZ)
+}
+
+fn write_param(buf: &mut [u8], pos: usize, name: &[u8], data: &[u8]) {
+    write_named(buf, pos, name, data);
+}
+
+fn write_named(buf: &mut [u8], mut pos: usize, name: &[u8], data: &[u8]) {
+    let name_len = name.len() + 1;
+    if !write_usize(buf, pos, name_len) {
+        return;
+    }
+    pos += USZ;
+    let Some(name_end) = pos.checked_add(name_len) else {
+        return;
+    };
+    if let Some(slot) = buf.get_mut(pos..name_end) {
+        slot[..name.len()].copy_from_slice(name);
+        slot[name.len()] = 0;
+    } else {
+        return;
+    }
+    pos = name_end;
+    if !write_usize(buf, pos, data.len()) {
+        return;
+    }
+    pos += USZ;
+    if !data.is_empty() {
+        let Some(data_end) = pos.checked_add(data.len()) else {
+            return;
+        };
+        if let Some(slot) = buf.get_mut(pos..data_end) {
+            slot.copy_from_slice(data);
+        } else {
+            return;
+        }
+        pos = data_end;
+    }
+    write_usize(buf, pos, 0);
+}
+
+fn read_usize(bytes: &[u8], at: usize) -> Option<usize> {
+    let end = at.checked_add(USZ)?;
+    let slot = bytes.get(at..end)?;
+    if USZ == 8 {
+        let mut tmp = [0u8; 8];
+        tmp.copy_from_slice(slot);
+        Some(u64::from_ne_bytes(tmp) as usize)
+    } else if USZ == 4 {
+        let mut tmp = [0u8; 4];
+        tmp.copy_from_slice(slot);
+        Some(u32::from_ne_bytes(tmp) as usize)
+    } else {
+        None
+    }
+}
+
+fn read_usize_within(bytes: &[u8], at: usize, limit: usize) -> Option<usize> {
+    let end = at.checked_add(USZ)?;
+    if end > limit {
+        return None;
+    }
+    read_usize(bytes, at)
+}
+
+fn write_usize(bytes: &mut [u8], at: usize, value: usize) -> bool {
+    let Some(end) = at.checked_add(USZ) else {
+        return false;
+    };
+    let Some(slot) = bytes.get_mut(at..end) else {
+        return false;
+    };
+    if USZ == 8 {
+        slot.copy_from_slice(&(value as u64).to_ne_bytes());
+        true
+    } else if USZ == 4 {
+        slot.copy_from_slice(&(value as u32).to_ne_bytes());
+        true
+    } else {
+        false
     }
 }
