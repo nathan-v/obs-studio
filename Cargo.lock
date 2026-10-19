@@ -452,6 +452,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "obs-callback"
+version = "0.1.0"
+
+[[package]]
 name = "obs-codec"
 version = "0.1.0"
 dependencies = [
@@ -467,6 +471,7 @@ dependencies = [
  "cc",
  "libc",
  "obs-c-oracle",
+ "obs-callback",
  "obs-hotkey",
  "obs-properties",
  "obs-util",
