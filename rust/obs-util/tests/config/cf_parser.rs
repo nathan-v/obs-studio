@@ -95,3 +95,20 @@ fn parser_edges() {
         b"$1//C"
     );
 }
+
+#[test]
+fn empty_formatted_diagnostic_preserves_null() {
+    use obs_util::cf_parser::nullable_diagnostic;
+    assert_eq!(
+        nullable_diagnostic(b"", 0, Some(b""), [None; 3]).2,
+        Some(vec![])
+    );
+    assert_eq!(
+        nullable_diagnostic(b"", 0, Some(b""), [None, None, Some(b"")]).2,
+        None
+    );
+    assert_eq!(
+        nullable_diagnostic(b"", 0, Some(b"$1"), [Some(b""), None, None]).2,
+        Some(vec![])
+    );
+}

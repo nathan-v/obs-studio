@@ -3,6 +3,7 @@
 use crate::common;
 
 mod cf_parser;
+mod cf_parser_parity;
 mod cf_tokenizer;
 mod cf_tokenizer_ffi_bounds;
 mod cf_tokenizer_layout;
