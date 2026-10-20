@@ -7,7 +7,12 @@
 
 #![deny(unsafe_code)]
 
+#[allow(unsafe_code)]
+pub mod ffi;
+
+mod curves;
 mod fader;
+mod peak;
 mod volmeter;
 
 pub use fader::{Fader, FaderCb};
@@ -29,14 +34,14 @@ pub const SAMPLE_PEAK_METER: i32 = 0;
 /// `TRUE_PEAK_METER`.
 pub const TRUE_PEAK_METER: i32 = 1;
 
-/// `obs_mul_to_db`. The body is the header inline in `audio-math.h`.
+/// `obs_mul_to_db`. The body is the header inline in `audio-math.h`,
+/// already ported in `obs-media-io`.
 pub fn mul_to_db(mul: f32) -> f32 {
-    let _ = mul;
-    todo!()
+    obs_media_io::audio_math::mul_to_db(mul)
 }
 
-/// `obs_db_to_mul`. The body is the header inline in `audio-math.h`.
+/// `obs_db_to_mul`. The body is the header inline in `audio-math.h`,
+/// already ported in `obs-media-io`.
 pub fn db_to_mul(db: f32) -> f32 {
-    let _ = db;
-    todo!()
+    obs_media_io::audio_math::db_to_mul(db)
 }

@@ -14,6 +14,8 @@
 //! The "Null 'fader'" log line is `obs_ptr_valid` in the shim. Tier 2
 //! still counts it.
 
+mod parity;
+
 use obs_audio_controls::{
     AudioPacket, FADER_CUBIC, FADER_IEC, FADER_LOG, Fader, MAX_AUDIO_CHANNELS, MeterCb,
     SAMPLE_PEAK_METER, SpeakerLayout, TRUE_PEAK_METER, Volmeter, db_to_mul, mul_to_db,
