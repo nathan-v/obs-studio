@@ -440,6 +440,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "obs-audio-controls"
+version = "0.1.0"
+dependencies = [
+ "obs-media-io",
+]
+
+[[package]]
 name = "obs-audio-monitoring"
 version = "0.1.0"
 
@@ -490,6 +497,7 @@ dependencies = [
  "criterion",
  "foldhash",
  "libc",
+ "obs-audio-controls",
  "obs-audio-monitoring",
  "obs-c-oracle",
  "obs-callback",
