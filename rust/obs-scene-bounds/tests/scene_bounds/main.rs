@@ -5,6 +5,8 @@
 
 use obs_scene_bounds::{BoundsType, Vec2, bounds_fit_scale};
 
+mod parity;
+
 /// The six types `all_types` walks. `OBS_BOUNDS_NONE` is not in that list.
 const TYPES: [BoundsType; 6] = [
     BoundsType::Stretch,

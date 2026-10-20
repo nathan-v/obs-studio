@@ -406,6 +406,7 @@ dependencies = [
  "obs-media-io",
  "obs-missing-files",
  "obs-properties",
+ "obs-scene-bounds",
  "obs-util",
 ]
 
@@ -485,6 +486,7 @@ dependencies = [
  "libc",
  "obs-c-oracle",
  "obs-callback",
+ "obs-graphics",
  "obs-hotkey",
  "obs-missing-files",
  "obs-properties",
