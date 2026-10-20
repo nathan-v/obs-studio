@@ -20,6 +20,7 @@ cc = "1"
 obs-properties = { path = "../obs-properties" }
 obs-hotkey = { path = "../obs-hotkey" }
 obs-missing-files = { path = "../obs-missing-files" }
+obs-scene-bounds = { path = "../obs-scene-bounds" }
 obs-callback = { path = "../obs-callback" }
 obs-c-oracle = { path = "../obs-c-oracle" }
 obs-util = { path = "../obs-util" }
