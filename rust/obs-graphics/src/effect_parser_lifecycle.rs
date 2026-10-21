@@ -31,6 +31,15 @@ pub trait Parser {
 
 /// Release owned parser state, preserving borrowed effect pointers and the
 /// unused top-level files/tokens arrays, exactly as `ep_free` does.
-pub fn free(_parser: &mut impl Parser) {
-    todo!("effect parser lifecycle")
+pub fn free(parser: &mut impl Parser) {
+    for collection in COLLECTIONS {
+        for index in 0..parser.len(collection) {
+            parser.destroy_element(collection, index);
+        }
+    }
+    parser.clear_current_pass();
+    parser.destroy_parser_state();
+    for collection in COLLECTIONS {
+        parser.release_storage(collection);
+    }
 }

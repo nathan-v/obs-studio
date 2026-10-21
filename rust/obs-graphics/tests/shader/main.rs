@@ -3,3 +3,5 @@
 mod effect_parser_lifecycle;
 mod shader_param_names;
 mod shader_param_names_parity;
+
+mod effect_parser_lifecycle_parity;
