@@ -3,3 +3,5 @@
 mod blend;
 mod bounds;
 mod coords;
+
+mod bounds_place;
