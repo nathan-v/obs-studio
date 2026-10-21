@@ -1,5 +1,10 @@
 /* Original cleanup and production inline adapters use the original C
  * lexer/preprocessor dependencies in the differential test executable. */
+#include <assert.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <string.h>
+
 #define ep_free oracle_ep_free
 #define cf_lexer_init oracle_cf_lexer_init
 #define cf_lexer_free oracle_cf_lexer_free
@@ -8,8 +13,11 @@
 #define cf_preprocessor_free oracle_cf_preprocessor_free
 #define cf_preprocess oracle_cf_preprocess
 #define cf_adderror oracle_cf_adderror
-#include "libobs/graphics/effect-parser-lifecycle.c.h"
-#include "libobs/graphics/effect-parser-lifecycle-adapter.c.h"
+#include "graphics/effect-parser.h"
+/* build.rs copies both bodies verbatim, excluding only the unrelated native
+ * PCH dependency setup. No cleanup operations are reimplemented here. */
+#include "effect-parser-lifecycle.inc"
+#include "effect-parser-lifecycle-adapter.inc"
 
 size_t oracle_effect_parser_layout(size_t index);
 void *oracle_effect_parser_fixture(unsigned seed);
