@@ -8,6 +8,8 @@
 //! Cases marked characterized, not endorsed, are what the C does today,
 //! including the odd parts.
 
+mod parity;
+
 use obs_graphics::vec2::Vec2;
 use obs_scene::coords::{
     coords_keep_scale, coords_nudge, item_canvas_scale, item_relative_scale, nudge_abs,
