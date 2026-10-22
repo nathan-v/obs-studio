@@ -10,9 +10,9 @@ pub mod file;
 pub mod nix;
 #[cfg(not(target_os = "macos"))]
 pub mod nix_inhibit;
+pub mod pipe;
 #[cfg(not(target_os = "macos"))]
 pub mod portal_inhibit;
-pub mod pipe;
 
 pub use crate::ffi::native_sem::Sem;
 pub use event::Event;

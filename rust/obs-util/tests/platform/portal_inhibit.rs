@@ -15,7 +15,7 @@ use obs_util::platform::unix::portal_inhibit::{
 };
 
 struct Pending {
-    done: Box<dyn Fn(CallResult) + Send>,
+    done: Box<dyn Fn(CallResult)>,
     cancel: Option<Rc<Cell<bool>>>,
 }
 
@@ -33,7 +33,7 @@ struct Inner {
     sub_path: RefCell<String>,
     live: Cell<usize>,
     logs: RefCell<Vec<(i32, String)>>,
-    response: RefCell<Option<(u32, Box<dyn Fn(u32) + Send>)>>,
+    response: RefCell<Option<(u32, Rc<dyn Fn(u32)>)>>,
     calls: RefCell<Vec<Pending>>,
 }
 
@@ -67,7 +67,7 @@ impl Transport {
         let result = if cancelled {
             CallResult::Cancelled
         } else if error {
-            CallResult::Failed
+            CallResult::Failed("portal error".into())
         } else {
             CallResult::Ok
         };
@@ -76,11 +76,18 @@ impl Transport {
     }
 
     fn respond(&self, code: u32) {
-        let response = self.0.response.borrow_mut().take().expect("response");
-        (response.1)(code);
+        let response = self
+            .0
+            .response
+            .borrow()
+            .as_ref()
+            .map(|slot| Rc::clone(&slot.1))
+            .expect("response");
+        response(code);
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 impl Host for Transport {
     type Conn = ();
 
@@ -117,7 +124,7 @@ impl Host for Transport {
         member: &str,
         path: &str,
         flags: u32,
-        on_response: Box<dyn Fn(u32) + Send>,
+        on_response: Box<dyn Fn(u32)>,
     ) -> u32 {
         assert_eq!(sender, PORTAL_NAME);
         assert_eq!(interface, REQUEST_IFACE);
@@ -126,7 +133,7 @@ impl Host for Transport {
         assert!(self.0.response.borrow().is_none());
         *self.0.sub_path.borrow_mut() = path.to_string();
         self.0.live.set(self.0.live.get() + 1);
-        self.0.response.replace(Some((17, on_response)));
+        self.0.response.replace(Some((17, Rc::from(on_response))));
         17
     }
 
@@ -151,7 +158,7 @@ impl Host for Transport {
         inhibit_flags: u32,
         token: &str,
         reason: &str,
-        on_done: Box<dyn Fn(CallResult) + Send>,
+        on_done: Box<dyn Fn(CallResult)>,
     ) {
         assert_eq!(destination, PORTAL_NAME);
         assert_eq!(path, PORTAL_PATH);
@@ -181,7 +188,7 @@ impl Host for Transport {
         method: &str,
         call_flags: i32,
         timeout: i32,
-        on_done: Box<dyn Fn(CallResult) + Send>,
+        on_done: Box<dyn Fn(CallResult)>,
     ) {
         assert_eq!(destination, PORTAL_NAME);
         assert_eq!(path, self.0.sub_path.borrow().as_str());
@@ -306,13 +313,7 @@ fn test_cancel_pending() {
     let info = Portal::create(transport.clone()).expect("portal");
     info.set_active("recording", true);
     info.set_active("unused", false);
-    assert!(
-        transport.0.calls.borrow()[0]
-            .cancel
-            .as_ref()
-            .unwrap()
-            .get()
-    );
+    assert!(transport.0.calls.borrow()[0].cancel.as_ref().unwrap().get());
     assert!(!info.is_active());
     assert!(!info.has_cancellable());
     assert!(info.request_path().is_none());
@@ -329,13 +330,7 @@ fn test_destroy_pending() {
     info.set_active("recording", true);
     let before = transport.0.live.get();
     Portal::destroy(Some(info));
-    assert!(
-        transport.0.calls.borrow()[0]
-            .cancel
-            .as_ref()
-            .unwrap()
-            .get()
-    );
+    assert!(transport.0.calls.borrow()[0].cancel.as_ref().unwrap().get());
     assert_eq!(transport.0.unsubscribes.get(), 1);
     assert_eq!(transport.0.closes.get(), 0);
     assert!(transport.0.live.get() > 0);
@@ -395,7 +390,10 @@ fn test_discovery_logs_the_c_messages() {
     assert!(Portal::create(transport.clone()).is_none());
     assert_eq!(
         transport.0.logs.borrow().as_slice(),
-        &[(100, "Could not create dbus connection: no session bus".into())]
+        &[(
+            100,
+            "Could not create dbus connection: no session bus".into()
+        )]
     );
     transport.0.logs.borrow_mut().clear();
     transport.0.bus_missing.set(false);
