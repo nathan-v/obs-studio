@@ -370,6 +370,19 @@ fn cf_preprocessor_empty_include_and_unterminated_macro_are_bounded() {
     assert!(r.ok);
     assert_eq!(r.pp.dependencies.num, 1);
     assert_eq!(r.ed.errors.num, 0);
+    std::fs::write(dir.join("bad.inc"), b"#endif\n").unwrap();
+    let r = Run::new(b"#include \"bad.inc\"\nx", false, &file);
+    let snapshot = r.snapshot();
+    assert_eq!(snapshot.errors.len(), 1);
+    assert_eq!(
+        snapshot.errors[0].0,
+        b"#endif outside of #if/#ifdef/#ifndef block"
+    );
+    assert_eq!(
+        snapshot.errors[0].1.as_deref(),
+        Some(dir.join("bad.inc").to_str().unwrap().as_bytes())
+    );
+    assert_eq!((snapshot.errors[0].2, snapshot.errors[0].3), (1, 2));
     for text in [b"#define M(a) a\nM(".as_slice(), b"#define M(a) a\nM(1"] {
         let r = Run::new(text, false, c"t.c");
         assert!(r.ok);
@@ -386,4 +399,9 @@ fn cf_preprocessor_empty_include_and_unterminated_macro_are_bounded() {
             );
         }
     }
+}
+
+#[test]
+fn cf_preprocessor_empty_lexer_matches_c() {
+    compare(b"");
 }

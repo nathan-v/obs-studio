@@ -29,7 +29,7 @@ fn check(
     deps: usize,
     errors: usize,
     message: Option<&str>,
-) {
+) -> Preprocessor {
     let mut arena = Vec::new();
     let input = lex(src.as_bytes(), &mut arena, file.as_bytes());
     let mut loaded: std::collections::BTreeMap<Vec<u8>, Vec<Token>> =
@@ -66,6 +66,7 @@ fn check(
     assert_eq!(p.definitions.len(), definitions);
     assert_eq!(loaded.len(), deps);
     assert_eq!(p.diagnostics.len(), errors);
+    assert!(p.diagnostics.iter().all(|d| d.level == 0));
     let mut rendered = String::new();
     for d in &p.diagnostics {
         let (text, file, pos) = &arena[d.token.origin];
@@ -77,6 +78,7 @@ fn check(
         ));
     }
     assert_eq!(rendered, message.unwrap_or(""));
+    p
 }
 
 #[test]
@@ -793,7 +795,7 @@ fn c_characterization_case_50() {
 
 #[test]
 fn test_cf_lexer_preprocess_define_test() {
-    check(
+    let p = check(
         "#define FOO 3\nint a = FOO;",
         "t.c",
         "\nint a =  3;",
@@ -803,6 +805,8 @@ fn test_cf_lexer_preprocess_define_test() {
         0,
         None,
     );
+    assert_eq!(p.tokens[8].kind, CfTokenType::Num);
+    assert_eq!(p.tokens[8].text, b"3");
 }
 #[test]
 fn test_cf_lexer_preprocess_ifdef_test() {
@@ -890,4 +894,13 @@ fn test_cf_lexer_preprocess_add_remove_def_test() {
             .collect::<Vec<_>>(),
         b"x BAR y"
     );
+}
+
+#[test]
+fn test_cf_preprocessor_empty_source_test() {
+    let mut p = Preprocessor::default();
+    p.process(&[], &mut |_: &Token| None);
+    assert!(p.tokens.is_empty());
+    assert!(p.definitions.is_empty());
+    assert!(p.diagnostics.is_empty());
 }
