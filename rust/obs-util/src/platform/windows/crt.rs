@@ -11,6 +11,10 @@ struct LconvPrefix {
 
 unsafe extern "C" {
     fn localeconv() -> *mut LconvPrefix;
+    // Use the direct CRT symbol, matching C's inline stdio wrapper. libc's
+    // dllimport declaration conflicts with libcaption's definition (LNK4217).
+    #[link_name = "sscanf"]
+    fn crt_sscanf(input: *const c_char, format: *const c_char, ...) -> c_int;
 }
 
 /// First byte of `localeconv()->decimal_point`.
@@ -108,10 +112,8 @@ pub fn preprocessor_integer_syntax() -> (bool, bool) {
     let mut value: libc::c_int = 0;
     // SAFETY: both literals are NUL-terminated; %i receives a writable int.
     // Each input represents at most two, so conversion cannot overflow.
-    let incomplete_hex =
-        unsafe { libc::sscanf(c"0x".as_ptr(), c"%i".as_ptr(), &raw mut value) == 1 };
-    let binary = unsafe {
-        libc::sscanf(c"0b10".as_ptr(), c"%i".as_ptr(), &raw mut value) == 1 && value == 2
-    };
+    let incomplete_hex = unsafe { crt_sscanf(c"0x".as_ptr(), c"%i".as_ptr(), &raw mut value) == 1 };
+    let binary =
+        unsafe { crt_sscanf(c"0b10".as_ptr(), c"%i".as_ptr(), &raw mut value) == 1 && value == 2 };
     (incomplete_hex, binary)
 }

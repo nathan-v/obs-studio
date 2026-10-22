@@ -294,14 +294,18 @@ fn cf_preprocessor_file_includes_parity() {
     std::fs::write(dir.join("a.inc"), b"#define A_VAL 1\nfrom_a\n").unwrap();
     std::fs::write(dir.join("nest.inc"), b"#include \"b.inc\"\n").unwrap();
     std::fs::write(dir.join("b.inc"), b"#define B_VAL 2\nfrom_b\n").unwrap();
-    let file = CString::new(dir.join("main.c").to_str().unwrap()).unwrap();
-    for text in [
-        b"#include \"a.inc\"\nA_VAL".as_slice(),
-        b"#include \"nest.inc\"\nB_VAL",
-        b"#include \"a.inc\"\n#include \"a.inc\"\nA_VAL",
+    let file = CString::new(dir.join("main.c").to_str().unwrap().replace('\\', "/")).unwrap();
+    for (text, dependencies) in [
+        (b"#include \"a.inc\"\nA_VAL".as_slice(), 1),
+        (b"#include \"nest.inc\"\nB_VAL".as_slice(), 2),
+        (
+            b"#include \"a.inc\"\n#include \"a.inc\"\nA_VAL".as_slice(),
+            1,
+        ),
     ] {
         let a = Run::new(text, false, &file);
         let b = Run::new(text, true, &file);
+        assert_eq!(a.pp.dependencies.num, dependencies);
         assert_eq!(a.snapshot(), b.snapshot());
         // Every Rust dependency token must point to its current live lexer,
         // including after the owning dependency darray grows.
@@ -365,7 +369,7 @@ fn cf_preprocessor_defined_unterminated_directives() {
 fn cf_preprocessor_empty_include_and_unterminated_macro_are_bounded() {
     let dir = crate::common::ScratchDir::new("cf-preprocessor-empty");
     std::fs::write(dir.join("empty.inc"), b"").unwrap();
-    let file = CString::new(dir.join("main.c").to_str().unwrap()).unwrap();
+    let file = CString::new(dir.join("main.c").to_str().unwrap().replace('\\', "/")).unwrap();
     let r = Run::new(b"#include \"empty.inc\"\nx", false, &file);
     assert!(r.ok);
     assert_eq!(r.pp.dependencies.num, 1);
@@ -380,7 +384,13 @@ fn cf_preprocessor_empty_include_and_unterminated_macro_are_bounded() {
     );
     assert_eq!(
         snapshot.errors[0].1.as_deref(),
-        Some(dir.join("bad.inc").to_str().unwrap().as_bytes())
+        Some(
+            dir.join("bad.inc")
+                .to_str()
+                .unwrap()
+                .replace('\\', "/")
+                .as_bytes()
+        )
     );
     assert_eq!((snapshot.errors[0].2, snapshot.errors[0].3), (1, 2));
     for text in [b"#define M(a) a\nM(".as_slice(), b"#define M(a) a\nM(1"] {
