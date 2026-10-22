@@ -17,3 +17,5 @@ mod lexer_layout;
 mod lexer_parity;
 mod text_lookup;
 mod text_lookup_parity;
+
+mod cf_preprocessor;
