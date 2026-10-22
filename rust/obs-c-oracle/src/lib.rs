@@ -96,6 +96,7 @@ pub mod scene_bounds;
 pub mod scene_bounds_place;
 pub mod scene_coords;
 pub mod shader_param_names;
+pub mod shader_sampler_convert;
 pub mod signal;
 pub mod task;
 pub mod text_lookup;

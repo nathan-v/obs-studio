@@ -20,6 +20,31 @@ pub trait Sampler {
     fn number(&self, index: usize, offset: usize, radix: u32) -> i128;
 }
 
-pub fn convert(_sampler: &impl Sampler) -> SamplerInfo {
-    todo!("shader sampler conversion")
+pub fn convert(sampler: &impl Sampler) -> SamplerInfo {
+    use crate::shader_param_names::{address, address_mode, filter, sample_filter};
+    let mut info = SamplerInfo {
+        filter: filter::POINT,
+        address_u: address::CLAMP,
+        address_v: address::CLAMP,
+        address_w: address::CLAMP,
+        max_anisotropy: 1,
+        border_color: 0,
+    };
+    for index in 0..sampler.state_count() {
+        let state = sampler.state(index);
+        if state.eq_ignore_ascii_case(b"Filter") {
+            info.filter = sample_filter(sampler.value(index));
+        } else if state.eq_ignore_ascii_case(b"AddressU") {
+            info.address_u = address_mode(sampler.value(index));
+        } else if state.eq_ignore_ascii_case(b"AddressV") {
+            info.address_v = address_mode(sampler.value(index));
+        } else if state.eq_ignore_ascii_case(b"AddressW") {
+            info.address_w = address_mode(sampler.value(index));
+        } else if state.eq_ignore_ascii_case(b"MaxAnisotropy") {
+            info.max_anisotropy = sampler.number(index, 0, 10) as i32;
+        } else if state.eq_ignore_ascii_case(b"BorderColor") {
+            info.border_color = sampler.number(index, 1, 16) as u32;
+        }
+    }
+    info
 }
