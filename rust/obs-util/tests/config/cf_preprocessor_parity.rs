@@ -405,3 +405,16 @@ fn cf_preprocessor_empty_include_and_unterminated_macro_are_bounded() {
 fn cf_preprocessor_empty_lexer_matches_c() {
     compare(b"");
 }
+
+#[test]
+fn cf_preprocessor_macro_call_whitespace_matches_c() {
+    for text in [
+        "#define M(a) a\nM (1)",
+        "#define M(a,b) a+b\nM\t(1,2)",
+        "#define M(a) a\nM  (1)",
+        "#define M(a) a\nM\n(1)",
+        "#define M(a) a\nM(M (1))",
+    ] {
+        compare(text.as_bytes());
+    }
+}
