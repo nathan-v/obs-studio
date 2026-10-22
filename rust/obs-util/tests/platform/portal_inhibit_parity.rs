@@ -29,6 +29,9 @@ use proptest::prelude::*;
 
 static LOCK: Mutex<()> = Mutex::new(());
 
+// `dyn Fn(u32)` desugars past clippy's type-complexity limit.
+type ResponseFn = Rc<dyn Fn(u32)>;
+
 struct Pending {
     done: Box<dyn Fn(CallResult)>,
     cancel: Option<Rc<std::cell::Cell<bool>>>,
@@ -39,7 +42,7 @@ struct Inner {
     portal_missing: bool,
     next_id: u32,
     trace: String,
-    response: Option<(u32, Rc<dyn Fn(u32)>)>,
+    response: Option<(u32, ResponseFn)>,
     calls: Vec<Pending>,
 }
 

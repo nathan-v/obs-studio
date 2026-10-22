@@ -14,6 +14,9 @@ use obs_util::platform::unix::portal_inhibit::{
     PORTAL_NAME, PORTAL_PATH, Portal, REQUEST_IFACE, SESSION_BUS, SIGNAL_FLAGS_NO_MATCH_RULE,
 };
 
+// `dyn Fn(u32)` desugars past clippy's type-complexity limit.
+type ResponseFn = Rc<dyn Fn(u32)>;
+
 struct Pending {
     done: Box<dyn Fn(CallResult)>,
     cancel: Option<Rc<Cell<bool>>>,
@@ -33,7 +36,7 @@ struct Inner {
     sub_path: RefCell<String>,
     live: Cell<usize>,
     logs: RefCell<Vec<(i32, String)>>,
-    response: RefCell<Option<(u32, Rc<dyn Fn(u32)>)>>,
+    response: RefCell<Option<(u32, ResponseFn)>>,
     calls: RefCell<Vec<Pending>>,
 }
 
