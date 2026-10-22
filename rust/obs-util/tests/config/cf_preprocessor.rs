@@ -11,6 +11,7 @@ fn lex(input: &[u8], arena: &mut Vec<(Vec<u8>, Vec<u8>, usize)>, file: &[u8]) ->
             arena.push((input.to_vec(), file.to_vec(), t.unmerged_start));
             Token {
                 kind: t.kind,
+                tail: l.reformatted[t.str_start..].to_vec(),
                 text: l.reformatted[t.str_start..t.str_start + t.str_len].to_vec(),
                 origin,
                 filler: false,
@@ -18,6 +19,7 @@ fn lex(input: &[u8], arena: &mut Vec<(Vec<u8>, Vec<u8>, usize)>, file: &[u8]) ->
         })
         .collect()
 }
+#[allow(clippy::too_many_arguments)] // mirrors the C characterization helper
 fn check(
     src: &str,
     file: &str,
@@ -33,7 +35,7 @@ fn check(
     let mut loaded: std::collections::BTreeMap<Vec<u8>, Vec<Token>> =
         std::collections::BTreeMap::new();
     let mut p = Preprocessor::default();
-    p.process(&input, &mut |t| {
+    p.process(&input, &mut |t: &Token| {
         let path = &t.text[1..t.text.len() - 1];
         if let Some(tokens) = loaded.get(path) {
             return Some(tokens.clone());
@@ -786,5 +788,106 @@ fn c_characterization_case_50() {
         0,
         1,
         Some("t.c (1, 2): #else outside of #if/#ifdef/#ifndef block\n"),
+    );
+}
+
+#[test]
+fn test_cf_lexer_preprocess_define_test() {
+    check(
+        "#define FOO 3\nint a = FOO;",
+        "t.c",
+        "\nint a =  3;",
+        10,
+        1,
+        0,
+        0,
+        None,
+    );
+}
+#[test]
+fn test_cf_lexer_preprocess_ifdef_test() {
+    check(
+        "#ifdef FOO\nyes\n#else\nno\n#endif\nend",
+        "t.c",
+        "\nno\n\nend",
+        5,
+        0,
+        0,
+        0,
+        None,
+    );
+    check(
+        "#define FOO\n#ifdef FOO\nyes\n#else\nno\n#endif\nend",
+        "t.c",
+        "\n\nyes\n\nend",
+        6,
+        1,
+        0,
+        0,
+        None,
+    );
+}
+#[test]
+fn test_cf_lexer_preprocess_errors_test() {
+    check(
+        "#ifdef FOO\nx",
+        "t.c",
+        "",
+        0,
+        0,
+        0,
+        1,
+        Some("t.c (2, 2): Unexpected end of file before #endif\n"),
+    );
+    check(
+        "#endif",
+        "t.c",
+        "",
+        0,
+        0,
+        0,
+        1,
+        Some("t.c (1, 2): #endif outside of #if/#ifdef/#ifndef block\n"),
+    );
+}
+#[test]
+fn test_cf_lexer_preprocess_add_remove_def_test() {
+    use obs_util::cf_preprocessor::Definition;
+    let mut arena = Vec::new();
+    let name = lex(b"BAR", &mut arena, b"t.c")[0].clone();
+    let tokens = lex(b"7", &mut arena, b"t.c");
+    let mut p = Preprocessor::default();
+    p.add(Definition {
+        name,
+        params: Vec::new(),
+        tokens,
+        macro_call: false,
+    });
+    assert_eq!(p.definitions.len(), 1);
+    let input = lex(b"x BAR y", &mut arena, b"t.c");
+    p.process(&input, &mut |_: &Token| None);
+    assert!(p.diagnostics.is_empty());
+    assert_eq!(p.tokens.len(), 6);
+    assert_eq!(
+        p.tokens
+            .iter()
+            .flat_map(|t| t.text.clone())
+            .collect::<Vec<_>>(),
+        b"x 7 y"
+    );
+    assert_eq!(p.tokens[2].kind, CfTokenType::Num);
+    p.remove(b"NOPE");
+    assert_eq!(p.definitions.len(), 1);
+    p.remove(b"BAR");
+    assert!(p.definitions.is_empty());
+    p = Preprocessor::default();
+    p.process(&input, &mut |_: &Token| None);
+    assert_eq!(p.tokens.len(), 6);
+    assert_eq!(
+        p.tokens
+            .iter()
+            .flat_map(|t| t.text.clone())
+            .collect::<Vec<_>>(),
+        b"x BAR y"
     );
 }

@@ -3,6 +3,7 @@
  * shims are #[no_mangle] and stay global. libobs exports no C++ symbols. */
 {
   local:
+    cf_preprocess_get_def_value;
     ep_free;
     add_alignment;
     obs_bounds_place;

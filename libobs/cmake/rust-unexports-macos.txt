@@ -125,3 +125,4 @@ _ep_free
 # Internal scene bounds placement.
 _add_alignment
 _obs_bounds_place
+_cf_preprocess_get_def_value

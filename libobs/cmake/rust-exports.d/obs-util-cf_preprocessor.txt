@@ -1,0 +1,5 @@
+cf_preprocessor_init
+cf_preprocessor_free
+cf_preprocess
+cf_preprocessor_add_def
+cf_preprocessor_remove_def

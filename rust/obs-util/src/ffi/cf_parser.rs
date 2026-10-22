@@ -1,27 +1,15 @@
-//! C layout and adapters for cf-parser. The preprocessor remains C.
+//! C layout and adapters for cf-parser.
 
 // c_char is i8 on most targets and u8 on some (aarch64 Linux,
 // aarch64-pc-windows-msvc): the `as u8` conversions below are needed on the
 // first and no-ops on the second, where clippy calls them unnecessary.
 #![allow(clippy::unnecessary_cast)]
 use super::cf_tokenizer::{cf_lexer, cf_token};
-use super::darray::darray;
 use super::lexer::{error_data, error_data_add};
 use crate::cf_parser::{self as safe, Cursor};
 use core::ffi::{CStr, c_char, c_int};
 
-/// Layout-only mirror of the C preprocessor; Rust does not own its fields.
-#[repr(C)]
-#[allow(non_camel_case_types)]
-pub struct cf_preprocessor {
-    pub lex: *mut cf_lexer,
-    pub ed: *mut error_data,
-    pub defines: darray,
-    pub sys_include_dirs: darray,
-    pub dependencies: darray,
-    pub tokens: darray,
-    pub ignore_state: bool,
-}
+pub use super::cf_preprocessor::cf_preprocessor;
 
 /// Public parser layout from cf-parser.h.
 #[repr(C)]

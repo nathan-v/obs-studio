@@ -6,6 +6,7 @@ pub mod bitstream;
 pub mod bmem;
 pub mod buffered_file_serializer;
 pub mod cf_parser;
+pub mod cf_preprocessor;
 pub mod cf_tokenizer;
 pub mod config_file;
 pub mod crc32;

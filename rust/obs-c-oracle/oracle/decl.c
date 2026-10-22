@@ -1,8 +1,8 @@
 /* Test-only oracle: the original libobs/callback/decl.c.h, unmodified,
  * with parse_decl_string renamed to oracle_parse_decl_string so it can link
  * next to the Rust implementation. The C parser it runs on
- * (util/cf-parser.c.h, and the preprocessor in util/cf-lexer.c.h) is not
- * ported and is compiled here too, under oracle_* names. The tokenizer,
+ * (util/cf-parser.c.h) is compiled here under oracle_* names. The
+ * preprocessor is compiled once by oracle/cf_preprocessor.c. The tokenizer,
  * lexer, and dstr functions they call are renamed to their oracles
  * (oracle/cf_tokenizer.c, oracle/lexer.c, oracle/dstr.c), so the whole
  * parse is the original C. bmalloc and blog stay the real symbols: the Rust
@@ -75,7 +75,6 @@ struct strref;
 bool cf_preprocess_get_def_value(struct cf_preprocessor *pp, const struct strref *def_name, int *value);
 
 #include "callback/decl.c.h"
-#include "util/cf-lexer.c.h"
 #include "util/cf-parser.c.h"
 #include "util/threading.h"
 

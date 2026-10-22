@@ -19,3 +19,5 @@ mod text_lookup;
 mod text_lookup_parity;
 
 mod cf_preprocessor;
+
+mod cf_preprocessor_parity;

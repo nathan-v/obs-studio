@@ -1,4 +1,4 @@
-/* Unity group (BUILD.md): util/cf-lexer.c on the
+/* Unity group (BUILD.md): C-reference cf preprocessor on the
  * util-only header (the C oracle compiles them on their own). */
 
 #include "libobs/build/libobs-util.pch.h"

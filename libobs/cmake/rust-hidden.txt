@@ -132,3 +132,4 @@ ep_free
 # Internal scene bounds placement.
 add_alignment
 obs_bounds_place
+cf_preprocess_get_def_value
