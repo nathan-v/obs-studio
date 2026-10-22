@@ -26,9 +26,26 @@ pub struct Diagnostic {
     pub message: Vec<u8>,
     pub level: i32,
 }
+/// Host scanf grammar choices, supplied through the platform boundary.
+#[derive(Clone, Copy, Debug)]
+pub struct IntegerSyntax {
+    pub incomplete_hex_is_zero: bool,
+    pub binary_prefix: bool,
+}
+impl Default for IntegerSyntax {
+    fn default() -> Self {
+        let (incomplete_hex_is_zero, binary_prefix) =
+            crate::platform::crt::preprocessor_integer_syntax();
+        Self {
+            incomplete_hex_is_zero,
+            binary_prefix,
+        }
+    }
+}
 /// State persists across preprocessing calls, just as in C.
 #[derive(Default)]
 pub struct Preprocessor {
+    pub integer_syntax: IntegerSyntax,
     pub definitions: Vec<Definition>,
     pub tokens: Vec<Token>,
     pub diagnostics: Vec<Diagnostic>,
@@ -156,7 +173,7 @@ impl Preprocessor {
             return None;
         }
         if token.kind == Num {
-            return integer(&token.text);
+            return integer(&token.text, self.integer_syntax);
         }
         if token.kind != Name {
             return None;
@@ -435,7 +452,9 @@ impl Preprocessor {
                 let def = self.definitions[index].clone();
                 let mut new_params = Vec::new();
                 if def.macro_call {
-                    next(tokens, i);
+                    // C next_token(false) advances once without skipping
+                    // spaces or tabs. Preserve its nonstandard call syntax.
+                    *i += 1;
                     if current(tokens, *i).kind != Other || current(tokens, *i).text != b"(" {
                         self.expected(current(tokens, *i), "'('");
                     } else {
@@ -549,15 +568,23 @@ impl Preprocessor {
         self.tokens.push(current(tokens, i).clone());
     }
 }
-fn integer(bytes: &[u8]) -> Option<i32> {
+fn integer(bytes: &[u8], syntax: IntegerSyntax) -> Option<i32> {
+    let bytes = bytes.trim_ascii_start();
+    let (negative, bytes) = match bytes.first() {
+        Some(b'-') => (true, &bytes[1..]),
+        Some(b'+') => (false, &bytes[1..]),
+        _ => (false, bytes),
+    };
     let (radix, start) = if bytes.starts_with(b"0x") || bytes.starts_with(b"0X") {
         (16, 2)
+    } else if syntax.binary_prefix && (bytes.starts_with(b"0b") || bytes.starts_with(b"0B")) {
+        (2, 2)
     } else if bytes.first() == Some(&b'0') {
         (8, 0)
     } else {
         (10, 0)
     };
-    let mut found = start == 2;
+    let mut found = radix == 16 && syntax.incomplete_hex_is_zero;
     let mut value = 0i32;
     for &b in &bytes[start..] {
         let digit = match b {
@@ -572,5 +599,9 @@ fn integer(bytes: &[u8]) -> Option<i32> {
         value = value.wrapping_mul(radix as i32).wrapping_add(digit as i32);
         found = true;
     }
-    found.then_some(value)
+    found.then_some(if negative {
+        value.wrapping_neg()
+    } else {
+        value
+    })
 }

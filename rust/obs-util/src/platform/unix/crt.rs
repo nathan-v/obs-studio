@@ -74,3 +74,17 @@ impl LocalTime {
         buf[..len.min(buf.len())].to_vec()
     }
 }
+
+/// Probe only bounded constants to preserve the host scanf("%i") grammar.
+/// No user input reaches variadic C conversion or its overflow behavior.
+pub fn preprocessor_integer_syntax() -> (bool, bool) {
+    let mut value: libc::c_int = 0;
+    // SAFETY: both literals are NUL-terminated; %i receives a writable int.
+    // Each input represents at most two, so conversion cannot overflow.
+    let incomplete_hex =
+        unsafe { libc::sscanf(c"0x".as_ptr(), c"%i".as_ptr(), &raw mut value) == 1 };
+    let binary = unsafe {
+        libc::sscanf(c"0b10".as_ptr(), c"%i".as_ptr(), &raw mut value) == 1 && value == 2
+    };
+    (incomplete_hex, binary)
+}

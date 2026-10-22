@@ -904,3 +904,35 @@ fn test_cf_preprocessor_empty_source_test() {
     assert!(p.definitions.is_empty());
     assert!(p.diagnostics.is_empty());
 }
+
+#[test]
+fn host_integer_grammar_is_explicit_in_the_safe_core() {
+    use obs_util::cf_preprocessor::IntegerSyntax;
+    let mut p = Preprocessor::default();
+    let mut t = Token {
+        kind: CfTokenType::Num,
+        text: b"0x".to_vec(),
+        tail: Vec::new(),
+        origin: 0,
+        filler: false,
+    };
+    for incomplete_hex_is_zero in [false, true] {
+        p.integer_syntax = IntegerSyntax {
+            incomplete_hex_is_zero,
+            binary_prefix: false,
+        };
+        assert_eq!(p.value(&t), incomplete_hex_is_zero.then_some(0));
+    }
+    for (bytes, value) in [
+        (b"-0x10".as_slice(), -16),
+        (b"  +010tail", 8),
+        (b"-2147483648", i32::MIN),
+    ] {
+        t.text = bytes.to_vec();
+        assert_eq!(p.value(&t), Some(value));
+    }
+    t.text = b"0b10".to_vec();
+    assert_eq!(p.value(&t), Some(0));
+    p.integer_syntax.binary_prefix = true;
+    assert_eq!(p.value(&t), Some(2));
+}
